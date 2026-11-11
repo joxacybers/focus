@@ -264,10 +264,15 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
             Spacer(modifier = Modifier.height(16.dp))
             
             // SLEEP MODE MINI CARD
+            val isSleepModeEnabled = prefs.isSleepModeEnabled()
+            val startTimeStr = String.format(Locale.getDefault(), "%02d:%02d", prefs.getSleepStartHour(), prefs.getSleepStartMinute())
+            
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFE0B2)), // Orange tonal equivalent
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().clickable {
+                    // Kelajakda TimePicker ochish mumkin
+                }
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -277,9 +282,16 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Uyqu rejimi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
-                        Text("Bugun 22:30 da avtomatik bloklanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
+                        Text("Bugun $startTimeStr da avtomatik bloklanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
                     }
-                    Switch(checked = true, onCheckedChange = { })
+                    var localSleepMode by remember { mutableStateOf(isSleepModeEnabled) }
+                    Switch(
+                        checked = localSleepMode, 
+                        onCheckedChange = { checked ->
+                            localSleepMode = checked
+                            prefs.setSleepModeEnabled(checked)
+                        }
+                    )
                 }
             }
         }

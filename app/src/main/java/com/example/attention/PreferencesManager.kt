@@ -59,4 +59,63 @@ class PreferencesManager(context: Context) {
             .putString("global_block_task_name", "")
             .apply()
     }
+
+    // --- SLEEP MODE LOGIC ---
+    fun isSleepModeEnabled(): Boolean = prefs.getBoolean("sleep_mode_enabled", false)
+    
+    fun setSleepModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("sleep_mode_enabled", enabled).apply()
+    }
+
+    fun getSleepStartHour(): Int = prefs.getInt("sleep_start_hour", 22)
+    fun getSleepStartMinute(): Int = prefs.getInt("sleep_start_minute", 30)
+    
+    fun getSleepEndHour(): Int = prefs.getInt("sleep_end_hour", 7)
+    fun getSleepEndMinute(): Int = prefs.getInt("sleep_end_minute", 0)
+
+    fun isCurrentlyInSleepMode(): Boolean {
+        if (!isSleepModeEnabled()) return false
+        
+        val cal = java.util.Calendar.getInstance()
+        val current = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        val start = getSleepStartHour() * 60 + getSleepStartMinute()
+        val end = getSleepEndHour() * 60 + getSleepEndMinute()
+
+        return if (start < end) {
+            current in start..end
+        } else {
+            current >= start || current < end
+        }
+    }
+
+    fun getSleepModeStartTimeMillis(): Long {
+        val cal = java.util.Calendar.getInstance()
+        val current = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        val start = getSleepStartHour() * 60 + getSleepStartMinute()
+        val end = getSleepEndHour() * 60 + getSleepEndMinute()
+
+        cal.set(java.util.Calendar.HOUR_OF_DAY, getSleepStartHour())
+        cal.set(java.util.Calendar.MINUTE, getSleepStartMinute())
+        cal.set(java.util.Calendar.SECOND, 0)
+        
+        if (start > end && current < end) {
+            cal.add(java.util.Calendar.DAY_OF_YEAR, -1) // Started yesterday
+        }
+        return cal.timeInMillis
+    }
+
+    fun getSleepModeEndTimeMillis(): Long {
+        val cal = java.util.Calendar.getInstance()
+        val current = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+        val end = getSleepEndHour() * 60 + getSleepEndMinute()
+        
+        cal.set(java.util.Calendar.HOUR_OF_DAY, getSleepEndHour())
+        cal.set(java.util.Calendar.MINUTE, getSleepEndMinute())
+        cal.set(java.util.Calendar.SECOND, 0)
+        
+        if (current > end) { 
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1) // Ends tomorrow
+        }
+        return cal.timeInMillis
+    }
 }

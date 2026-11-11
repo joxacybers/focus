@@ -42,25 +42,25 @@ class AppBlockerService : AccessibilityService() {
     }
 
     private fun checkAndBlock(packageName: String) {
+        val isGlobalBlock = preferencesManager.isGlobalBlockActive()
+        val isSleepMode = preferencesManager.isCurrentlyInSleepMode()
+        val isAppBlocked = preferencesManager.isAppBlocked(packageName)
+
         if (whitelist.contains(packageName)) {
             // Never block whitelisted apps
-            if (preferencesManager.isGlobalBlockActive() && packageName == "com.example.attention") {
-                // If global block is active, even our own app is blocked to prevent changing settings.
-                // We only allow dialer apps to pass through.
+            if ((isGlobalBlock || isSleepMode) && packageName == "com.example.attention") {
+                // If focus or sleep is active, block even our own app
             } else {
                 lockOverlayManager.hideOverlay()
                 return
             }
         }
 
-        val isGlobalBlock = preferencesManager.isGlobalBlockActive()
-        val isAppBlocked = preferencesManager.isAppBlocked(packageName)
-
-        if (isGlobalBlock || isAppBlocked) {
+        if (isGlobalBlock || isSleepMode || isAppBlocked) {
             Log.d("AppBlocker", "Blocking app: $packageName")
             lockOverlayManager.showOverlay()
-
-            // Optionally redirect to home screen
+            
+            // Redirect to home screen
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -74,13 +74,20 @@ class AppBlockerService : AccessibilityService() {
     private fun startPolling() {
         checkJob?.cancel()
         checkJob = scope.launch {
+            var wasSleepMode = preferencesManager.isCurrentlyInSleepMode()
             while (isActive) {
-                // Periodically verify if global block is over
-                if (!preferencesManager.isGlobalBlockActive()) {
-                    // Check if current app is still blocked? We would need UsageStatsManager to reliably get foreground app here.
-                    // For now, if global block is inactive, we'll hide overlay IF the last known event wasn't a blocked app.
-                    // Actually, the overlay intercepts touches. To be safe, we just rely on window state changes.
+                val isSleepModeNow = preferencesManager.isCurrentlyInSleepMode()
+                
+                // If sleep mode just started (Time hit 22:30)
+                if (isSleepModeNow && !wasSleepMode) {
+                    lockOverlayManager.showOverlay()
                 }
+                // If sleep mode just ended (Time hit 07:00)
+                if (!isSleepModeNow && wasSleepMode && !preferencesManager.isGlobalBlockActive()) {
+                    lockOverlayManager.hideOverlay()
+                }
+                
+                wasSleepMode = isSleepModeNow
                 delay(1000)
             }
         }

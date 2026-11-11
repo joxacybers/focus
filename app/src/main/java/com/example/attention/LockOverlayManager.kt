@@ -95,10 +95,14 @@ class LockOverlayManager(private val context: Context) {
 
 @Composable
 fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Context) {
-    val endTime = prefs.getGlobalBlockEndTime()
-    val startTime = prefs.getGlobalBlockStartTime()
-    val totalDuration = (endTime - startTime).coerceAtLeast(1L)
+    val isGlobal = prefs.isGlobalBlockActive()
+    val isSleepMode = prefs.isCurrentlyInSleepMode()
 
+    val endTime = if (isGlobal) prefs.getGlobalBlockEndTime() else prefs.getSleepModeEndTimeMillis()
+    val startTime = if (isGlobal) prefs.getGlobalBlockStartTime() else prefs.getSleepModeStartTimeMillis()
+    val taskName = if (isGlobal) prefs.getCurrentTaskName() else "Uyqu rejimi"
+
+    val totalDuration = (endTime - startTime).coerceAtLeast(1L)
     var remainingMillis by remember { mutableStateOf(endTime - System.currentTimeMillis()) }
 
     // Flashlight State
@@ -114,7 +118,7 @@ fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Contex
             delay(1000)
             remainingMillis = endTime - System.currentTimeMillis()
             if (remainingMillis <= 0) {
-                prefs.stopGlobalBlock()
+                if (isGlobal) prefs.stopGlobalBlock()
                 onGiveUp()
             }
         }
@@ -221,9 +225,9 @@ fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Contex
                 modifier = Modifier.padding(bottom = 32.dp)
             ) {
                 Column(modifier = Modifier.padding(vertical = 12.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Hozirgi vazifa: ${prefs.getCurrentTaskName()}", style = MaterialTheme.typography.titleSmall, color = onSurfaceWhite)
+                    Text("Hozirgi vazifa: $taskName", style = MaterialTheme.typography.titleSmall, color = onSurfaceWhite)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Pomodoro 1 / 4", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(if (isGlobal) "Pomodoro 1 / 4" else "Kechki uyqu soati", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
             }
 
