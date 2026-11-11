@@ -34,13 +34,19 @@ class PreferencesManager(context: Context) {
         return prefs.getLong("global_block_end_time", 0L)
     }
 
+    fun getGlobalBlockStartTime(): Long {
+        return prefs.getLong("global_block_start_time", 0L)
+    }
+
     fun getCurrentTaskName(): String {
         return prefs.getString("global_block_task_name", "Focusing") ?: "Focusing"
     }
 
     fun startGlobalBlock(durationMillis: Long, taskName: String) {
-        val endTime = System.currentTimeMillis() + durationMillis
+        val startTime = System.currentTimeMillis()
+        val endTime = startTime + durationMillis
         prefs.edit()
+            .putLong("global_block_start_time", startTime)
             .putLong("global_block_end_time", endTime)
             .putString("global_block_task_name", taskName)
             .apply()
@@ -48,6 +54,7 @@ class PreferencesManager(context: Context) {
 
     fun stopGlobalBlock() {
         prefs.edit()
+            .putLong("global_block_start_time", 0L)
             .putLong("global_block_end_time", 0L)
             .putString("global_block_task_name", "")
             .apply()
