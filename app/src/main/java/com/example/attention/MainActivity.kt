@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
@@ -115,8 +116,8 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
         weeklyStats = usageStatsHelper.getWeeklyUsage()
     }
 
-    val totalTimeMs = apps.sumOf { it.totalTimeInForeground }
-    val totalMinutes = totalTimeMs / 1000 / 60
+    val todayScreenTime = weeklyStats.lastOrNull()?.totalTimeMs ?: 0L
+    val totalMinutes = todayScreenTime / 1000 / 60
     val limitMinutes = 240 // 4 hours limit example
     val progress = (totalMinutes.toFloat() / limitMinutes).coerceIn(0f, 1f)
 
@@ -167,13 +168,19 @@ fun WeeklyRhythmCard(weeklyStats: List<DailyStats>) {
     
     val maxTime = weeklyStats.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(1L) ?: 1L
 
+    var selectedIndex by remember { mutableStateOf(weeklyStats.size - 1) }
+    val selectedStat = weeklyStats.getOrNull(selectedIndex)
+    val selHours = (selectedStat?.totalTimeMs ?: 0L) / 1000 / 60 / 60
+    val selMinutes = ((selectedStat?.totalTimeMs ?: 0L) / 1000 / 60) % 60
+    val selDay = selectedStat?.dayName ?: ""
+
     FilledCard(
         modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("Haftalik ritm (Weekly Rhythm)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("$selDay: ${selHours}s ${selMinutes}d", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("O'rtacha kunlik: ${avgHours}s ${avgMinutes}d", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -184,21 +191,26 @@ fun WeeklyRhythmCard(weeklyStats: List<DailyStats>) {
                 verticalAlignment = Alignment.Bottom
             ) {
                 weeklyStats.forEachIndexed { index, stat ->
+                    val isSelected = index == selectedIndex
                     val isToday = index == weeklyStats.size - 1
                     val barHeightFraction = (stat.totalTimeMs.toFloat() / maxTime.toFloat()).coerceIn(0.1f, 1f)
                     
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.fillMaxHeight()
+                        modifier = Modifier.fillMaxHeight().clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            selectedIndex = index
+                        }
                     ) {
                         Box(
                             modifier = Modifier
                                 .width(32.dp)
                                 .fillMaxHeight(barHeightFraction)
                                 .background(
-                                    // Make today's bar orange/error color, others primaryContainer
-                                    color = if (isToday) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primaryContainer,
+                                    color = if (isSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primaryContainer,
                                     shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
                                 )
                         )
@@ -206,8 +218,8 @@ fun WeeklyRhythmCard(weeklyStats: List<DailyStats>) {
                         Text(
                             text = stat.dayName,
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isToday) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

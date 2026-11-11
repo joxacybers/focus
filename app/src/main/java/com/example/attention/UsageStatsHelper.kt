@@ -61,22 +61,39 @@ class UsageStatsHelper(private val context: Context) {
 
         val statsList = mutableListOf<DailyStats>()
         val sdf = SimpleDateFormat("EE", Locale.ENGLISH) // Gets "Mon", "Tue"
-        val packageManager = context.packageManager
 
         for (i in 6 downTo 0) {
             val start = calendar.timeInMillis - (i * 24 * 60 * 60 * 1000L)
             val end = start + (24 * 60 * 60 * 1000L) - 1
 
-            val dailyStats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
-
+            // Query Exact Screen Interactive Time
+            val events = usageStatsManager.queryEvents(start, end)
             var totalTime = 0L
-            dailyStats?.forEach { stats ->
-                if (stats.totalTimeInForeground > 0 && stats.packageName != context.packageName) {
-                    // Only count apps that can be launched (user apps)
-                    if (packageManager.getLaunchIntentForPackage(stats.packageName) != null) {
-                        totalTime += stats.totalTimeInForeground
+            var interactiveStart = 0L
+            var isInteractive = false
+            
+            val event = android.app.usage.UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                if (event.eventType == android.app.usage.UsageEvents.Event.SCREEN_INTERACTIVE) {
+                    isInteractive = true
+                    interactiveStart = event.timeStamp
+                } else if (event.eventType == android.app.usage.UsageEvents.Event.SCREEN_NON_INTERACTIVE) {
+                    if (isInteractive) {
+                        totalTime += (event.timeStamp - interactiveStart)
+                        isInteractive = false
                     }
                 }
+            }
+            // If screen was still interactive at the end of the day bounds
+            if (isInteractive) {
+                totalTime += (end - interactiveStart)
+            }
+            
+            // Fallback just in case
+            if (totalTime == 0L) {
+                val dailyStats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+                totalTime = dailyStats?.sumOf { it.totalTimeInForeground } ?: 0L
             }
 
             val tempCal = Calendar.getInstance().apply { timeInMillis = start }
