@@ -6,7 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import kotlinx.coroutines.launch
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
@@ -307,6 +309,9 @@ fun TasksScreen(prefs: PreferencesManager) {
 @Composable
 fun SettingsScreen(prefs: PreferencesManager) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isChecking by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("System Permissions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text("Required for strict blocking", style = MaterialTheme.typography.bodyMedium)
@@ -326,6 +331,38 @@ fun SettingsScreen(prefs: PreferencesManager) {
             }
             context.startActivity(intent)
         }) { Text("4. Device Administrator") }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("Ilova yangilanishi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("GitHub'dan so'nggi versiyani tekshirish", style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            onClick = {
+                if (!isChecking) {
+                    isChecking = true
+                    coroutineScope.launch {
+                        val updater = UpdateManager(context)
+                        val hasUpdate = updater.checkForUpdates()
+                        if (!hasUpdate) {
+                            Toast.makeText(context, "Siz eng so'nggi versiyadasiz", Toast.LENGTH_SHORT).show()
+                        }
+                        isChecking = false
+                    }
+                }
+            },
+            enabled = !isChecking
+        ) {
+            if (isChecking) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            Text("Yangilanishni tekshirish")
+        }
     }
 }
 
