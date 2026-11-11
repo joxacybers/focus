@@ -1,0 +1,56 @@
+name: Auto Release APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Get Version Name from Gradle
+        id: get_version
+        run: |
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if Release Exists
+        uses: mukunku/tag-exists-action@v1.4.0
+        id: check_tag
+        with:
+          tag: 'v${{ steps.get_version.outputs.version }}'
+
+      - name: Setup JDK 17
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Make gradlew executable
+        if: steps.check_tag.outputs.exists == 'false'
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        if: steps.check_tag.outputs.exists == 'false'
+        run: ./gradlew assembleDebug
+
+      - name: Create Release and Upload APK
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: 'v${{ steps.get_version.outputs.version }}'
+          name: 'Focus App v${{ steps.get_version.outputs.version }}'
+          body: 'Yangi versiya: v${{ steps.get_version.outputs.version }}'
+          draft: false
+          prerelease: false
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
