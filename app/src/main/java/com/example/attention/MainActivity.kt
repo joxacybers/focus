@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import java.text.SimpleDateFormat
+import java.util.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.attention.ui.theme.AttentionTheme
@@ -111,12 +113,33 @@ fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper)
 
 @Composable
 fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
-    var apps by remember { mutableStateOf(emptyList<AppUsageInfo>()) }
+    var weeklyStats by remember { mutableStateOf(emptyList<DailyStats>()) }
+    var selectedDayIndex by remember { mutableStateOf(0) }
+    var selectedDayApps by remember { mutableStateOf(emptyList<AppUsageInfo>()) }
+
     LaunchedEffect(Unit) {
-        apps = usageStatsHelper.getDailyUsage()
+        val stats = usageStatsHelper.getWeeklyScreenTime()
+        weeklyStats = stats
+
+        val cal = Calendar.getInstance()
+        val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0-based for Sun-Sat
+        selectedDayIndex = currentDayOfWeek
+
+        val todayStats = stats.getOrNull(currentDayOfWeek)
+        if (todayStats != null) {
+            selectedDayApps = usageStatsHelper.getDailyUsage(todayStats.startTime, todayStats.endTime)
+        }
     }
 
-    val totalTimeMs = apps.sumOf { it.totalTimeInForeground }
+    if (weeklyStats.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        }
+        return
+    }
+
+    val selectedStat = weeklyStats[selectedDayIndex]
+    val totalTimeMs = selectedStat.totalTimeMs
     val totalHours = totalTimeMs / 1000 / 60 / 60
     val totalMinutes = (totalTimeMs / 1000 / 60) % 60
     val limitMinutes = 240 // 4 hours limit example
@@ -125,6 +148,12 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
 
     val progress = (currentTotalMin.toFloat() / limitMinutes).coerceIn(0f, 1f)
     val progressColor = if (progress >= 0.8f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    // Formatting date (e.g. "Wed, Nov 11")
+    val dateFormat = SimpleDateFormat("EEE, MMM d", Locale.ENGLISH)
+    val dateString = dateFormat.format(Date(selectedStat.startTime))
+    val isToday = selectedDayIndex == (Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1)
+    val dayLabel = if (isToday) "Today" else dateString
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -142,7 +171,7 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text("BUGUNGI EKRAN VAQTI", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+                    Text("BUGUNGI EKRAN VAQTI ($dayLabel)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("${totalHours} soat ${totalMinutes} daq", style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -166,6 +195,18 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
                     }
                 }
             }
+
+            // WEEKLY CHART CARD
+            Spacer(modifier = Modifier.height(16.dp))
+            WeeklyChartCard(
+                weeklyStats = weeklyStats,
+                selectedIndex = selectedDayIndex,
+                onDaySelected = { index ->
+                    selectedDayIndex = index
+                    val stat = weeklyStats[index]
+                    selectedDayApps = usageStatsHelper.getDailyUsage(stat.startTime, stat.endTime)
+                }
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -213,8 +254,8 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        val maxUsage = apps.maxOfOrNull { it.totalTimeInForeground }?.toFloat() ?: 1f
-        items(apps.take(3)) { app ->
+        val maxUsage = selectedDayApps.maxOfOrNull { it.totalTimeInForeground }?.toFloat() ?: 1f
+        items(selectedDayApps.take(3)) { app ->
             AppUsageFilledRow(app, prefs, maxUsage)
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -239,6 +280,70 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
                         Text("Bugun 22:30 da avtomatik bloklanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
                     }
                     Switch(checked = true, onCheckedChange = { })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeeklyChartCard(weeklyStats: List<DailyStats>, selectedIndex: Int, onDaySelected: (Int) -> Unit) {
+    val maxTimeMs = weeklyStats.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(1L) ?: 1L
+    val maxHours = Math.ceil((maxTimeMs / 1000f / 60f / 60f).toDouble()).toInt().coerceAtLeast(2)
+    val graphTopHour = if (maxHours % 2 != 0) maxHours + 1 else maxHours
+    
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().height(160.dp).padding(16.dp)) {
+            // Horizontal lines and labels
+            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                val lines = 2
+                val step = graphTopHour / lines
+                for (i in lines downTo 0) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i * step}h", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                    }
+                    if (i > 0) Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            
+            // Bars
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 28.dp).fillMaxHeight(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                weeklyStats.forEachIndexed { index, stat ->
+                    val isSelected = index == selectedIndex
+                    val heightFraction = (stat.totalTimeMs.toFloat() / (graphTopHour * 60 * 60 * 1000f)).coerceIn(0f, 1f)
+                    
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                        modifier = Modifier.fillMaxHeight().clickable { onDaySelected(index) }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(24.dp)
+                                .fillMaxHeight(heightFraction)
+                                .background(
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stat.dayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
