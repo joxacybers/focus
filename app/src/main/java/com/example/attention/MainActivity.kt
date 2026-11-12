@@ -455,6 +455,8 @@ fun ScreenBlockingTab(prefs: PreferencesManager) {
     var customSchedules by remember { mutableStateOf(prefs.getCustomSchedules()) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        var editingSchedule by remember { mutableStateOf<CustomSchedule?>(null) }
+        
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp) // space for FAB
@@ -501,7 +503,10 @@ fun ScreenBlockingTab(prefs: PreferencesManager) {
                 Card(
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp).clickable { 
+                        editingSchedule = schedule
+                        showCustomSettings = true
+                    }
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -553,14 +558,28 @@ fun ScreenBlockingTab(prefs: PreferencesManager) {
         
         if (showCustomSettings) {
             CustomScheduleBottomSheet(
-                onDismiss = { showCustomSettings = false },
+                initialSchedule = editingSchedule,
+                onDismiss = { 
+                    showCustomSettings = false 
+                    editingSchedule = null
+                },
                 context = context,
                 onSave = { title, sH, sM, eH, eM ->
-                    val newSchedule = CustomSchedule(UUID.randomUUID().toString(), title, sH, sM, eH, eM, true)
-                    val updated = customSchedules + newSchedule
-                    prefs.saveCustomSchedules(updated)
-                    customSchedules = updated
+                    if (editingSchedule != null) {
+                        val updated = customSchedules.map { 
+                            if (it.id == editingSchedule!!.id) it.copy(title = title, startH = sH, startM = sM, endH = eH, endM = eM)
+                            else it 
+                        }
+                        prefs.saveCustomSchedules(updated)
+                        customSchedules = updated
+                    } else {
+                        val newSchedule = CustomSchedule(UUID.randomUUID().toString(), title, sH, sM, eH, eM, true)
+                        val updated = customSchedules + newSchedule
+                        prefs.saveCustomSchedules(updated)
+                        customSchedules = updated
+                    }
                     showCustomSettings = false
+                    editingSchedule = null
                 }
             )
         }
@@ -598,37 +617,51 @@ fun AppBlockingTab(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper
 
 @Composable
 fun TasksScreen(prefs: PreferencesManager) {
+    var taskName by remember { mutableStateOf("") }
+    var pomodoroCount by remember { mutableStateOf(4f) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Vazifalar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Fokus Sessiyasi (Pomodoro)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(24.dp))
         
-        // FOCUS SESSION CARD (Moved from Home)
         ElevatedCard(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                    contentAlignment = Alignment.Center
+            Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+                OutlinedTextField(
+                    value = taskName,
+                    onValueChange = { taskName = it },
+                    label = { Text("Nima ish qilasiz? (Masalan: Dars)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Text("Pomodoro sikllari: ${pomodoroCount.toInt()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Har biri 25 daqiqa (Jami: ${pomodoroCount.toInt() * 25} daqiqa)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Slider(
+                    value = pomodoroCount,
+                    onValueChange = { pomodoroCount = it },
+                    valueRange = 1f..10f,
+                    steps = 8
+                )
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                FilledTonalButton(
+                    onClick = {
+                        val name = taskName.ifBlank { "Fokus" }
+                        val totalMinutes = pomodoroCount.toInt() * 25
+                        prefs.startGlobalBlock(totalMinutes * 60_000L, name)
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
                 ) {
-                    Icon(Icons.Outlined.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Fokus sessiyasi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Oxirgi: Dars qilish - 50 daq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                FilledTonalButton(onClick = {
-                    prefs.startGlobalBlock(25 * 60_000L, "Fokus sessiyasi")
-                }) {
                     Icon(Icons.Outlined.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("Boshlash")
                 }
             }
@@ -770,22 +803,23 @@ fun SleepSettingsBottomSheet(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomScheduleBottomSheet(
+    initialSchedule: CustomSchedule? = null,
     onDismiss: () -> Unit,
     context: android.content.Context,
     onSave: (String, Int, Int, Int, Int) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var startH by remember { mutableStateOf(9) }
-    var startM by remember { mutableStateOf(0) }
-    var endH by remember { mutableStateOf(12) }
-    var endM by remember { mutableStateOf(0) }
+    var title by remember { mutableStateOf(initialSchedule?.title ?: "") }
+    var startH by remember { mutableStateOf(initialSchedule?.startH ?: 9) }
+    var startM by remember { mutableStateOf(initialSchedule?.startM ?: 0) }
+    var endH by remember { mutableStateOf(initialSchedule?.endH ?: 12) }
+    var endM by remember { mutableStateOf(initialSchedule?.endM ?: 0) }
 
     val startStr = String.format(Locale.getDefault(), "%02d:%02d", startH, startM)
     val endStr = String.format(Locale.getDefault(), "%02d:%02d", endH, endM)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Yangi reja qo'shish", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (initialSchedule != null) "Rejani tahrirlash" else "Yangi reja qo'shish", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(24.dp))
 
             OutlinedTextField(
@@ -827,7 +861,7 @@ fun CustomScheduleBottomSheet(
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Text("Saqlash", style = MaterialTheme.typography.titleMedium)
+                Text(if (initialSchedule != null) "O'zgarishlarni saqlash" else "Saqlash", style = MaterialTheme.typography.titleMedium)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }

@@ -51,12 +51,18 @@ class AppBlockerService : AccessibilityService() {
             if ((isGlobalBlock || hasActiveSchedule) && packageName == "com.example.attention") {
                 // If focus or sleep is active, block even our own app
             } else {
+                if (isGlobalBlock) {
+                    preferencesManager.pauseGlobalBlock()
+                }
                 lockOverlayManager.hideOverlay()
                 return
             }
         }
 
         if (isGlobalBlock || hasActiveSchedule || isAppBlocked) {
+            if (isGlobalBlock && !whitelist.contains(packageName)) {
+                preferencesManager.resumeGlobalBlock()
+            }
             Log.d("AppBlocker", "Blocking app: $packageName")
             lockOverlayManager.showOverlay()
             

@@ -168,6 +168,14 @@ fun BlockScreen(
     } else {
         activeSchedule?.name ?: "Bloklangan"
     }
+    
+    val subText = if (isPreview) {
+        "Namuna"
+    } else if (isGlobal) {
+        "Pomodoro Sessiyasi"
+    } else {
+        "Rejali Blok"
+    }
 
     val totalDuration = (endTime - startTime).coerceAtLeast(1L)
     var remainingMillis by remember { mutableStateOf(endTime - System.currentTimeMillis()) }
@@ -175,10 +183,6 @@ fun BlockScreen(
     // Flashlight State
     val cameraManager = remember { context.getSystemService(Context.CAMERA_SERVICE) as CameraManager }
     var isFlashlightOn by remember { mutableStateOf(false) }
-
-    // Give up State
-    var giveUpClicks by remember { mutableStateOf(0) }
-    var giveUpText by remember { mutableStateOf(if (isPreview) "Yopish" else "Favqulodda chiqish") }
 
     LaunchedEffect(Unit) {
         while (remainingMillis > 0) {
@@ -294,7 +298,7 @@ fun BlockScreen(
                 Column(modifier = Modifier.padding(vertical = 12.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Hozirgi vazifa: $taskName", style = MaterialTheme.typography.titleSmall, color = onSurfaceWhite)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(if (isGlobal) "Pomodoro 1 / 4" else "Kechki uyqu soati", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(subText, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
             }
 
@@ -372,26 +376,18 @@ fun BlockScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (isPreview) {
                     Text("Bu shunchaki namunaviy ko'rinish", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { onGiveUp() },
+                        border = BorderStroke(1.dp, surfaceVariant),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = errorRed)
+                    ) {
+                        Text("Yopish")
+                    }
                 } else {
                     Text("Faqat Telefon va SMS ga ruxsat berilgan", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = {
-                        if (isPreview) {
-                            onGiveUp()
-                        } else if (giveUpClicks == 1) {
-                            prefs.stopGlobalBlock()
-                            onGiveUp()
-                        } else {
-                            giveUpClicks++
-                            giveUpText = "Tasdiqlash uchun yana bosing"
-                        }
-                    },
-                    border = BorderStroke(1.dp, surfaceVariant),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = errorRed)
-                ) {
-                    Text(giveUpText)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // NO EXIT BUTTON FOR REAL BLOCKS!
                 }
             }
         }

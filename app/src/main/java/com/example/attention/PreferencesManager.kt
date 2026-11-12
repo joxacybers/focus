@@ -36,10 +36,20 @@ class PreferencesManager(context: Context) {
     }
 
     // --- GLOBAL (FOCUS) BLOCK LOGIC ---
-    fun isGlobalBlockActive(): Boolean = System.currentTimeMillis() < prefs.getLong("global_block_end_time", 0L)
-    fun getGlobalBlockEndTime(): Long = prefs.getLong("global_block_end_time", 0L)
+    fun isGlobalBlockActive(): Boolean {
+        if (prefs.getBoolean("global_block_is_paused", false)) return true
+        return System.currentTimeMillis() < prefs.getLong("global_block_end_time", 0L)
+    }
+    
+    fun getGlobalBlockEndTime(): Long {
+        if (prefs.getBoolean("global_block_is_paused", false)) {
+            return System.currentTimeMillis() + prefs.getLong("global_block_paused_remaining", 0L)
+        }
+        return prefs.getLong("global_block_end_time", 0L)
+    }
+    
     fun getGlobalBlockStartTime(): Long = prefs.getLong("global_block_start_time", 0L)
-    fun getCurrentTaskName(): String = prefs.getString("global_block_task_name", "Focusing") ?: "Focusing"
+    fun getCurrentTaskName(): String = prefs.getString("global_block_task_name", "Fokus") ?: "Fokus"
 
     fun startGlobalBlock(durationMillis: Long, taskName: String) {
         val startTime = System.currentTimeMillis()
@@ -48,6 +58,7 @@ class PreferencesManager(context: Context) {
             .putLong("global_block_start_time", startTime)
             .putLong("global_block_end_time", endTime)
             .putString("global_block_task_name", taskName)
+            .putBoolean("global_block_is_paused", false)
             .apply()
     }
 
@@ -56,7 +67,29 @@ class PreferencesManager(context: Context) {
             .putLong("global_block_start_time", 0L)
             .putLong("global_block_end_time", 0L)
             .putString("global_block_task_name", "")
+            .putBoolean("global_block_is_paused", false)
             .apply()
+    }
+
+    fun pauseGlobalBlock() {
+        if (!isGlobalBlockActive() || prefs.getBoolean("global_block_is_paused", false)) return
+        val remaining = prefs.getLong("global_block_end_time", 0L) - System.currentTimeMillis()
+        if (remaining > 0) {
+            prefs.edit()
+                .putBoolean("global_block_is_paused", true)
+                .putLong("global_block_paused_remaining", remaining)
+                .apply()
+        }
+    }
+
+    fun resumeGlobalBlock() {
+        if (prefs.getBoolean("global_block_is_paused", false)) {
+            val remaining = prefs.getLong("global_block_paused_remaining", 0L)
+            prefs.edit()
+                .putBoolean("global_block_is_paused", false)
+                .putLong("global_block_end_time", System.currentTimeMillis() + remaining)
+                .apply()
+        }
     }
 
     // --- SLEEP MODE LOGIC ---
