@@ -164,40 +164,25 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
             Text("Bugun samarali kun bo'lsin", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
             Spacer(modifier = Modifier.height(24.dp))
             
-            // MAIN CARD - TODAY'S SCREEN TIME
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text("BUGUNGI EKRAN VAQTI ($dayLabel)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("${totalHours} soat ${totalMinutes} daq", style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Limit: 4 soat / Qoldi: $remainingMin daq", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(12.dp),
-                        color = progressColor,
-                        trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
-                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { }, modifier = Modifier.weight(1f)) {
-                            Text("Limitni o'zgartirish", maxLines = 1, style = MaterialTheme.typography.labelSmall)
-                        }
-                        FilledTonalButton(onClick = { }, modifier = Modifier.weight(1f)) {
-                            Text("Hisobotni ko'rish", maxLines = 1, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
+            // SELECTED DAY SCREEN TIME
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "${totalHours} soat ${totalMinutes} daq",
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = dayLabel,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+            
+            Spacer(modifier = Modifier.height(24.dp))
 
             // WEEKLY CHART CARD
-            Spacer(modifier = Modifier.height(16.dp))
             WeeklyChartCard(
                 weeklyStats = weeklyStats,
                 selectedIndex = selectedDayIndex,
@@ -301,32 +286,42 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
 @Composable
 fun WeeklyChartCard(weeklyStats: List<DailyStats>, selectedIndex: Int, onDaySelected: (Int) -> Unit) {
     val maxTimeMs = weeklyStats.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(1L) ?: 1L
-    val maxHours = Math.ceil((maxTimeMs / 1000f / 60f / 60f).toDouble()).toInt().coerceAtLeast(2)
-    val graphTopHour = if (maxHours % 2 != 0) maxHours + 1 else maxHours
+    val maxTimeHoursFloat = maxTimeMs / 1000f / 60f / 60f
+    
+    // Choose an upper bound for the graph based on the maximum usage
+    val graphTopHour = when {
+        maxTimeHoursFloat <= 2f -> 2
+        maxTimeHoursFloat <= 4f -> 4
+        maxTimeHoursFloat <= 6f -> 6
+        maxTimeHoursFloat <= 8f -> 8
+        maxTimeHoursFloat <= 12f -> 12
+        else -> 24
+    }
     
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(160.dp).padding(16.dp)) {
-            // Horizontal lines and labels
+        Box(modifier = Modifier.fillMaxWidth().height(180.dp).padding(16.dp)) {
+            // Horizontal lines and labels (Y-axis)
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                // Usually 3 or 4 segments depending on height. Let's do 2 segments for cleanliness
                 val lines = 2
-                val step = graphTopHour / lines
+                val step = graphTopHour / lines // e.g. if top is 8, steps are 4, 8.
                 for (i in lines downTo 0) {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${i * step}h", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                        Text("${i * step}s", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(24.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     }
                     if (i > 0) Spacer(modifier = Modifier.weight(1f))
                 }
             }
             
-            // Bars
+            // Bars (X-axis)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 28.dp).fillMaxHeight(),
+                modifier = Modifier.fillMaxWidth().padding(start = 32.dp).fillMaxHeight(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -341,7 +336,7 @@ fun WeeklyChartCard(weeklyStats: List<DailyStats>, selectedIndex: Int, onDaySele
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(24.dp)
+                                .width(28.dp)
                                 .fillMaxHeight(heightFraction)
                                 .background(
                                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
