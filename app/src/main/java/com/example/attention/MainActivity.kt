@@ -42,7 +42,7 @@ enum class Screen(val title: String, val icon: ImageVector, val selectedIcon: Im
     Home("Bosh sahifa", Icons.Outlined.Home, Icons.Filled.Home),
     Blocking("Bloklash", Icons.Outlined.Security, Icons.Filled.Security),
     Tasks("Vazifalar", Icons.Outlined.CheckCircle, Icons.Filled.CheckCircle),
-    Settings("Statistika", Icons.Outlined.BarChart, Icons.Filled.BarChart)
+    Settings("Sozlamalar", Icons.Outlined.Settings, Icons.Filled.Settings)
 }
 
 class MainActivity : ComponentActivity() {
@@ -63,14 +63,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
     var currentScreen by remember { mutableStateOf(Screen.Home) }
+    var initialBlockingTab by remember { mutableStateOf(0) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
+            @OptIn(ExperimentalMaterial3Api::class)
             TopAppBar(
                 title = { Text("Focus", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
                 actions = {
@@ -79,7 +80,7 @@ fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper)
                             Icon(Icons.Outlined.Notifications, contentDescription = "Notifications")
                         }
                     }
-                    IconButton(onClick = { }) {
+                    IconButton(onClick = { currentScreen = Screen.Settings }) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Settings")
                     }
                 },
@@ -105,8 +106,15 @@ fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper)
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (currentScreen) {
-                Screen.Home -> HomeScreen(prefs, usageStatsHelper)
-                Screen.Blocking -> BlockingScreen(prefs, usageStatsHelper)
+                Screen.Home -> HomeScreen(
+                    prefs = prefs, 
+                    usageStatsHelper = usageStatsHelper, 
+                    onNavigateToAllApps = { 
+                        initialBlockingTab = 1
+                        currentScreen = Screen.Blocking 
+                    }
+                )
+                Screen.Blocking -> BlockingScreen(prefs, usageStatsHelper, initialBlockingTab)
                 Screen.Tasks -> TasksScreen(prefs)
                 Screen.Settings -> SettingsScreen(prefs)
             }
@@ -115,10 +123,11 @@ fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper)
 }
 
 @Composable
-fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
+fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper, onNavigateToAllApps: () -> Unit) {
     var weeklyStats by remember { mutableStateOf(emptyList<DailyStats>()) }
     var selectedDayIndex by remember { mutableStateOf(0) }
     var selectedDayApps by remember { mutableStateOf(emptyList<AppUsageInfo>()) }
+    var showSleepSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -209,7 +218,7 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
             // MOST USED APPS
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Eng ko'p ishlatilgan ilovalar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { }) {
+                TextButton(onClick = { onNavigateToAllApps() }) {
                     Text("Barchasi")
                 }
             }
@@ -405,9 +414,9 @@ fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Fl
 }
 
 @Composable
-fun BlockingScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
-    var selectedTabIndex by remember { mutableStateOf(0) }
-    val tabs = listOf("Ekran (Intervalli bloklash)", "Ilovalarni bloklash")
+fun BlockingScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper, initialTab: Int = 0) {
+    var selectedTabIndex by remember { mutableStateOf(initialTab) }
+    val tabs = listOf("Ekran", "Ilovalar")
 
     Column(modifier = Modifier.fillMaxSize()) {
         TabRow(
@@ -556,28 +565,18 @@ fun SettingsScreen(prefs: PreferencesManager) {
     var isChecking by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Ruxsatnomalar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(16.dp))
-        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }) { Text("Usage Access") }
-        Spacer(modifier = Modifier.height(8.dp))
-        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) }) { Text("Overlay Permission") }
-        Spacer(modifier = Modifier.height(8.dp))
-        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Accessibility") }
-        Spacer(modifier = Modifier.height(8.dp))
-        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = {
-            val componentName = ComponentName(context, AdminReceiver::class.java)
-            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Required to prevent uninstallation.")
-            }
-            context.startActivity(intent)
-        }) { Text("Device Administrator") }
+        val pInfo = try {
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        } catch (e: Exception) {
+            null
+        }
+        val versionName = pInfo?.versionName ?: "1.0.0"
         
-        Spacer(modifier = Modifier.height(32.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-        Spacer(modifier = Modifier.height(16.dp))
+        Text("Sozlamalar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(24.dp))
         
-        Text("Ilova yangilanishi", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text("Ilova yangilanishi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text("Hozirgi versiya: v$versionName", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -602,6 +601,27 @@ fun SettingsScreen(prefs: PreferencesManager) {
             }
             Text("Yangilanishni tekshirish")
         }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Text("Ruxsatnomalar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }) { Text("Usage Access") }
+        Spacer(modifier = Modifier.height(8.dp))
+        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))) }) { Text("Overlay Permission") }
+        Spacer(modifier = Modifier.height(8.dp))
+        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Accessibility") }
+        Spacer(modifier = Modifier.height(8.dp))
+        FilledTonalButton(modifier = Modifier.fillMaxWidth(), onClick = {
+            val componentName = ComponentName(context, AdminReceiver::class.java)
+            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
+                putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Required to prevent uninstallation.")
+            }
+            context.startActivity(intent)
+        }) { Text("Device Administrator") }
     }
 }
 
