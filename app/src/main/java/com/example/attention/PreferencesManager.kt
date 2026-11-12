@@ -67,6 +67,14 @@ class PreferencesManager(context: Context) {
         prefs.edit().putBoolean("sleep_mode_enabled", enabled).apply()
     }
 
+    fun setSleepStart(hour: Int, minute: Int) {
+        prefs.edit().putInt("sleep_start_hour", hour).putInt("sleep_start_minute", minute).apply()
+    }
+
+    fun setSleepEnd(hour: Int, minute: Int) {
+        prefs.edit().putInt("sleep_end_hour", hour).putInt("sleep_end_minute", minute).apply()
+    }
+
     fun getSleepStartHour(): Int = prefs.getInt("sleep_start_hour", 22)
     fun getSleepStartMinute(): Int = prefs.getInt("sleep_start_minute", 30)
     

@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -195,38 +196,8 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
             
             Spacer(modifier = Modifier.height(24.dp))
 
-            // FOCUS SESSION CARD
-            ElevatedCard(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Outlined.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Fokus sessiyasi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("Oxirgi: Dars qilish - 50 daq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    FilledTonalButton(onClick = {
-                        prefs.startGlobalBlock(25 * 60_000L, "Fokus sessiyasi")
-                    }) {
-                        Icon(Icons.Outlined.PlayArrow, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Boshlash")
-                    }
-                }
-            }
-
+            // REMOVED: Focus Session Card is now in TasksScreen
+            
             Spacer(modifier = Modifier.height(24.dp))
 
             // MOST USED APPS
@@ -240,8 +211,10 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
         }
 
         val maxUsage = selectedDayApps.maxOfOrNull { it.totalTimeInForeground }?.toFloat() ?: 1f
+        
         items(selectedDayApps.take(3)) { app ->
-            AppUsageFilledRow(app, prefs, maxUsage)
+            val pm = LocalContext.current.packageManager
+            AppUsageFilledRow(app, prefs, maxUsage, pm)
             Spacer(modifier = Modifier.height(8.dp))
         }
 
@@ -358,49 +331,66 @@ fun WeeklyChartCard(weeklyStats: List<DailyStats>, selectedIndex: Int, onDaySele
 }
 
 @Composable
-fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Float) {
+fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Float, pm: android.content.pm.PackageManager) {
     var isBlocked by remember { mutableStateOf(prefs.isAppBlocked(app.packageName)) }
     val progress = (app.totalTimeInForeground.toFloat() / maxUsage).coerceIn(0f, 1f)
     val h = app.totalTimeInForeground / 1000 / 60 / 60
     val m = (app.totalTimeInForeground / 1000 / 60) % 60
     val timeStr = if (h > 0) "$h soat $m daq" else "$m daq"
 
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        val icon = remember(app.packageName) {
+            try {
+                pm.getApplicationIcon(app.packageName)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        
+        if (icon != null) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    android.widget.ImageView(ctx).apply {
+                        setImageDrawable(icon)
+                    }
+                },
+                modifier = Modifier.size(40.dp)
+            )
+        } else {
             Box(
-                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.surface, CircleShape),
+                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(app.appName.take(1), fontWeight = FontWeight.Bold)
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(app.appName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(timeStr, style = MaterialTheme.typography.bodySmall)
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Switch(
-                checked = isBlocked,
-                onCheckedChange = { checked ->
-                    isBlocked = checked
-                    prefs.setAppBlocked(app.packageName, checked)
-                }
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(app.appName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(timeStr, style = MaterialTheme.typography.bodySmall)
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
             )
         }
+        Spacer(modifier = Modifier.width(16.dp))
+        Switch(
+            checked = isBlocked,
+            onCheckedChange = { checked ->
+                isBlocked = checked
+                prefs.setAppBlocked(app.packageName, checked)
+            }
+        )
     }
 }
 
@@ -415,6 +405,39 @@ fun BlockingScreen(prefs: PreferencesManager) {
 fun TasksScreen(prefs: PreferencesManager) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Vazifalar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // FOCUS SESSION CARD (Moved from Home)
+        ElevatedCard(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Fokus sessiyasi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Oxirgi: Dars qilish - 50 daq", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                FilledTonalButton(onClick = {
+                    prefs.startGlobalBlock(25 * 60_000L, "Fokus sessiyasi")
+                }) {
+                    Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Boshlash")
+                }
+            }
+        }
     }
 }
 

@@ -83,6 +83,47 @@ class LockOverlayManager(private val context: Context) {
         overlayLifecycleOwner.start()
         windowManager.addView(composeView, params)
     }
+    
+    // Yordamchi preview funksiyasi (5 soniyadan keyin avtomatik yopiladi)
+    fun showPreview(isSleepMode: Boolean) {
+        if (composeView != null) return
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                    or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.CENTER
+
+        composeView = ComposeView(context).apply {
+            setViewTreeLifecycleOwner(overlayLifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(overlayLifecycleOwner)
+            setViewTreeViewModelStoreOwner(overlayLifecycleOwner)
+
+            setContent {
+                AttentionTheme {
+                    BlockScreen(
+                        prefs = prefs,
+                        onGiveUp = { hideOverlay() },
+                        context = context,
+                        isPreview = true,
+                        previewIsSleep = isSleepMode
+                    )
+                }
+            }
+        }
+        
+        overlayLifecycleOwner.start()
+        windowManager.addView(composeView, params)
+    }
 
     fun hideOverlay() {
         composeView?.let {
@@ -94,13 +135,39 @@ class LockOverlayManager(private val context: Context) {
 }
 
 @Composable
-fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Context) {
+fun BlockScreen(
+    prefs: PreferencesManager,
+    onGiveUp: () -> Unit,
+    context: Context,
+    isPreview: Boolean = false,
+    previewIsSleep: Boolean = false
+) {
     val isGlobal = prefs.isGlobalBlockActive()
     val isSleepMode = prefs.isCurrentlyInSleepMode()
 
-    val endTime = if (isGlobal) prefs.getGlobalBlockEndTime() else prefs.getSleepModeEndTimeMillis()
-    val startTime = if (isGlobal) prefs.getGlobalBlockStartTime() else prefs.getSleepModeStartTimeMillis()
-    val taskName = if (isGlobal) prefs.getCurrentTaskName() else "Uyqu rejimi"
+    val endTime = if (isPreview) {
+        System.currentTimeMillis() + 5000L // Preview 5 sec
+    } else if (isGlobal) {
+        prefs.getGlobalBlockEndTime()
+    } else {
+        prefs.getSleepModeEndTimeMillis()
+    }
+    
+    val startTime = if (isPreview) {
+        System.currentTimeMillis()
+    } else if (isGlobal) {
+        prefs.getGlobalBlockStartTime()
+    } else {
+        prefs.getSleepModeStartTimeMillis()
+    }
+    
+    val taskName = if (isPreview) {
+        if (previewIsSleep) "Uyqu rejimi (Preview)" else "Fokus (Preview)"
+    } else if (isGlobal) {
+        prefs.getCurrentTaskName()
+    } else {
+        "Uyqu rejimi"
+    }
 
     val totalDuration = (endTime - startTime).coerceAtLeast(1L)
     var remainingMillis by remember { mutableStateOf(endTime - System.currentTimeMillis()) }
@@ -111,14 +178,14 @@ fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Contex
 
     // Give up State
     var giveUpClicks by remember { mutableStateOf(0) }
-    var giveUpText by remember { mutableStateOf("Favqulodda chiqish") }
+    var giveUpText by remember { mutableStateOf(if (isPreview) "Yopish" else "Favqulodda chiqish") }
 
     LaunchedEffect(Unit) {
         while (remainingMillis > 0) {
-            delay(1000)
+            delay(100) // faster update for preview
             remainingMillis = endTime - System.currentTimeMillis()
             if (remainingMillis <= 0) {
-                if (isGlobal) prefs.stopGlobalBlock()
+                if (isGlobal && !isPreview) prefs.stopGlobalBlock()
                 onGiveUp()
             }
         }
@@ -303,11 +370,17 @@ fun BlockScreen(prefs: PreferencesManager, onGiveUp: () -> Unit, context: Contex
 
             // 5. VERY BOTTOM
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Faqat Telefon va SMS ga ruxsat berilgan", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                if (isPreview) {
+                    Text("Bu shunchaki namunaviy ko'rinish", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Text("Faqat Telefon va SMS ga ruxsat berilgan", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(
                     onClick = {
-                        if (giveUpClicks == 1) {
+                        if (isPreview) {
+                            onGiveUp()
+                        } else if (giveUpClicks == 1) {
                             prefs.stopGlobalBlock()
                             onGiveUp()
                         } else {
