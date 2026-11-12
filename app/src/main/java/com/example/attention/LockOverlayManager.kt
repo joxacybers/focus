@@ -143,14 +143,14 @@ fun BlockScreen(
     previewIsSleep: Boolean = false
 ) {
     val isGlobal = prefs.isGlobalBlockActive()
-    val isSleepMode = prefs.isCurrentlyInSleepMode()
+    val activeSchedule = prefs.getActiveSchedule()
 
     val endTime = if (isPreview) {
         System.currentTimeMillis() + 5000L // Preview 5 sec
     } else if (isGlobal) {
         prefs.getGlobalBlockEndTime()
     } else {
-        prefs.getSleepModeEndTimeMillis()
+        activeSchedule?.endTime ?: System.currentTimeMillis()
     }
     
     val startTime = if (isPreview) {
@@ -158,7 +158,7 @@ fun BlockScreen(
     } else if (isGlobal) {
         prefs.getGlobalBlockStartTime()
     } else {
-        prefs.getSleepModeStartTimeMillis()
+        activeSchedule?.startTime ?: System.currentTimeMillis()
     }
     
     val taskName = if (isPreview) {
@@ -166,7 +166,7 @@ fun BlockScreen(
     } else if (isGlobal) {
         prefs.getCurrentTaskName()
     } else {
-        "Uyqu rejimi"
+        activeSchedule?.name ?: "Bloklangan"
     }
 
     val totalDuration = (endTime - startTime).coerceAtLeast(1L)

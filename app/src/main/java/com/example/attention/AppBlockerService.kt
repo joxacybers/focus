@@ -43,12 +43,12 @@ class AppBlockerService : AccessibilityService() {
 
     private fun checkAndBlock(packageName: String) {
         val isGlobalBlock = preferencesManager.isGlobalBlockActive()
-        val isSleepMode = preferencesManager.isCurrentlyInSleepMode()
+        val hasActiveSchedule = preferencesManager.getActiveSchedule() != null
         val isAppBlocked = preferencesManager.isAppBlocked(packageName)
 
         if (whitelist.contains(packageName)) {
             // Never block whitelisted apps
-            if ((isGlobalBlock || isSleepMode) && packageName == "com.example.attention") {
+            if ((isGlobalBlock || hasActiveSchedule) && packageName == "com.example.attention") {
                 // If focus or sleep is active, block even our own app
             } else {
                 lockOverlayManager.hideOverlay()
@@ -56,7 +56,7 @@ class AppBlockerService : AccessibilityService() {
             }
         }
 
-        if (isGlobalBlock || isSleepMode || isAppBlocked) {
+        if (isGlobalBlock || hasActiveSchedule || isAppBlocked) {
             Log.d("AppBlocker", "Blocking app: $packageName")
             lockOverlayManager.showOverlay()
             
@@ -74,20 +74,20 @@ class AppBlockerService : AccessibilityService() {
     private fun startPolling() {
         checkJob?.cancel()
         checkJob = scope.launch {
-            var wasSleepMode = preferencesManager.isCurrentlyInSleepMode()
+            var wasScheduleActive = preferencesManager.getActiveSchedule() != null
             while (isActive) {
-                val isSleepModeNow = preferencesManager.isCurrentlyInSleepMode()
+                val isScheduleActiveNow = preferencesManager.getActiveSchedule() != null
                 
-                // If sleep mode just started (Time hit 22:30)
-                if (isSleepModeNow && !wasSleepMode) {
+                // If schedule just started
+                if (isScheduleActiveNow && !wasScheduleActive) {
                     lockOverlayManager.showOverlay()
                 }
-                // If sleep mode just ended (Time hit 07:00)
-                if (!isSleepModeNow && wasSleepMode && !preferencesManager.isGlobalBlockActive()) {
+                // If schedule just ended
+                if (!isScheduleActiveNow && wasScheduleActive && !preferencesManager.isGlobalBlockActive()) {
                     lockOverlayManager.hideOverlay()
                 }
                 
-                wasSleepMode = isSleepModeNow
+                wasScheduleActive = isScheduleActiveNow
                 delay(1000)
             }
         }

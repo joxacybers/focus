@@ -447,36 +447,100 @@ fun ScreenBlockingTab(prefs: PreferencesManager) {
     val context = LocalContext.current
     val isSleepModeEnabled = prefs.isSleepModeEnabled()
     val startTimeStr = String.format(Locale.getDefault(), "%02d:%02d", prefs.getSleepStartHour(), prefs.getSleepStartMinute())
+    
     var showSleepSettings by remember { mutableStateOf(false) }
+    var showCustomSettings by remember { mutableStateOf(false) }
+    
+    // We can also have an edit mode if we pass an ID, for now it will just be "add new"
+    var customSchedules by remember { mutableStateOf(prefs.getCustomSchedules()) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("Rejali bloklashlar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFE0B2)),
-            modifier = Modifier.fillMaxWidth().clickable { showSleepSettings = true }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 80.dp) // space for FAB
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.Bedtime, contentDescription = null, tint = Color(0xFFE65100))
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Uyqu rejimi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
-                    Text("Har kuni $startTimeStr da qulflanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
-                }
-                var localSleepMode by remember { mutableStateOf(isSleepModeEnabled) }
-                Switch(
-                    checked = localSleepMode, 
-                    onCheckedChange = { checked ->
-                        localSleepMode = checked
-                        prefs.setSleepModeEnabled(checked)
+            item {
+                Text("Rejali bloklashlar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Sleep Mode Card
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFE0B2)),
+                    modifier = Modifier.fillMaxWidth().clickable { showSleepSettings = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.Bedtime, contentDescription = null, tint = Color(0xFFE65100))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Uyqu rejimi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                            Text("Har kuni $startTimeStr da qulflanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
+                        }
+                        var localSleepMode by remember { mutableStateOf(isSleepModeEnabled) }
+                        Switch(
+                            checked = localSleepMode, 
+                            onCheckedChange = { checked ->
+                                localSleepMode = checked
+                                prefs.setSleepModeEnabled(checked)
+                            }
+                        )
                     }
-                )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
+
+            // Custom Schedules
+            items(customSchedules) { schedule ->
+                val sStr = String.format(Locale.getDefault(), "%02d:%02d", schedule.startH, schedule.startM)
+                val eStr = String.format(Locale.getDefault(), "%02d:%02d", schedule.endH, schedule.endM)
+                var isEnabled by remember { mutableStateOf(schedule.enabled) }
+
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(schedule.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("$sStr dan $eStr gacha", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                        }
+                        Switch(
+                            checked = isEnabled, 
+                            onCheckedChange = { checked ->
+                                isEnabled = checked
+                                val updated = customSchedules.map { if (it.id == schedule.id) it.copy(enabled = checked) else it }
+                                prefs.saveCustomSchedules(updated)
+                                customSchedules = updated
+                            }
+                        )
+                        IconButton(onClick = {
+                            val updated = customSchedules.filter { it.id != schedule.id }
+                            prefs.saveCustomSchedules(updated)
+                            customSchedules = updated
+                        }) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "O'chirish", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+
+        FloatingActionButton(
+            onClick = { showCustomSettings = true },
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "Qo'shish")
         }
 
         if (showSleepSettings) {
@@ -484,6 +548,20 @@ fun ScreenBlockingTab(prefs: PreferencesManager) {
                 prefs = prefs,
                 onDismiss = { showSleepSettings = false },
                 context = context
+            )
+        }
+        
+        if (showCustomSettings) {
+            CustomScheduleBottomSheet(
+                onDismiss = { showCustomSettings = false },
+                context = context,
+                onSave = { title, sH, sM, eH, eM ->
+                    val newSchedule = CustomSchedule(UUID.randomUUID().toString(), title, sH, sM, eH, eM, true)
+                    val updated = customSchedules + newSchedule
+                    prefs.saveCustomSchedules(updated)
+                    customSchedules = updated
+                    showCustomSettings = false
+                }
             )
         }
     }
@@ -683,6 +761,73 @@ fun SleepSettingsBottomSheet(
                 Icon(Icons.Outlined.Visibility, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Qulf ekranini ko'rish (Preview)")
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomScheduleBottomSheet(
+    onDismiss: () -> Unit,
+    context: android.content.Context,
+    onSave: (String, Int, Int, Int, Int) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var startH by remember { mutableStateOf(9) }
+    var startM by remember { mutableStateOf(0) }
+    var endH by remember { mutableStateOf(12) }
+    var endM by remember { mutableStateOf(0) }
+
+    val startStr = String.format(Locale.getDefault(), "%02d:%02d", startH, startM)
+    val endStr = String.format(Locale.getDefault(), "%02d:%02d", endH, endM)
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Yangi reja qo'shish", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Reja nomi (Masalan: Ish vaqti)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Boshlanish", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        android.app.TimePickerDialog(context, { _, h, m -> startH = h; startM = m }, startH, startM, true).show()
+                    }) {
+                        Text(startStr, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Tugash", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        android.app.TimePickerDialog(context, { _, h, m -> endH = h; endM = m }, endH, endM, true).show()
+                    }) {
+                        Text(endStr, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = {
+                    val finalTitle = title.ifBlank { "Rejali blok" }
+                    onSave(finalTitle, startH, startM, endH, endM)
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                Text("Saqlash", style = MaterialTheme.typography.titleMedium)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
