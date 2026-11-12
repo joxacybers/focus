@@ -21,24 +21,37 @@ class UsageStatsHelper(private val context: Context) {
         return usageStatsList
             .filter { it.totalTimeInForeground > 0 }
             .mapNotNull { stats ->
-                // Filter out our own app
                 if (stats.packageName == context.packageName) return@mapNotNull null
 
-                // Exclude system launchers or basic core packages that users don't care about
                 val excludeList = listOf("com.google.android.apps.nexuslauncher", "com.android.launcher", "com.sec.android.app.launcher", "com.miui.home", "com.android.systemui")
                 if (excludeList.contains(stats.packageName)) return@mapNotNull null
 
                 try {
                     val appInfo = packageManager.getApplicationInfo(stats.packageName, 0)
                     val appName = packageManager.getApplicationLabel(appInfo).toString()
-                    
-                    // Allow everything else that actually has a name and icon and took screen time
                     AppUsageInfo(stats.packageName, appName, stats.totalTimeInForeground)
                 } catch (e: Exception) {
                     null
                 }
             }
             .sortedByDescending { it.totalTimeInForeground }
+    }
+
+    fun getAllInstalledApps(): List<AppUsageInfo> {
+        val packageManager = context.packageManager
+        val packages = packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        
+        return packages.mapNotNull { appInfo ->
+            val launchIntent = packageManager.getLaunchIntentForPackage(appInfo.packageName)
+            val excludeList = listOf("com.google.android.apps.nexuslauncher", "com.android.launcher", "com.sec.android.app.launcher", "com.miui.home", "com.android.systemui")
+            
+            if (launchIntent != null && appInfo.packageName != context.packageName && !excludeList.contains(appInfo.packageName)) {
+                val appName = packageManager.getApplicationLabel(appInfo).toString()
+                AppUsageInfo(appInfo.packageName, appName, 0L)
+            } else {
+                null
+            }
+        }.sortedBy { it.appName.lowercase(Locale.getDefault()) }
     }
 
     // Bugungi foydalanishni olish uchun shortcut

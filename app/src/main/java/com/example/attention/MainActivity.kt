@@ -106,7 +106,7 @@ fun AppNavigation(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper)
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (currentScreen) {
                 Screen.Home -> HomeScreen(prefs, usageStatsHelper)
-                Screen.Blocking -> BlockingScreen(prefs)
+                Screen.Blocking -> BlockingScreen(prefs, usageStatsHelper)
                 Screen.Tasks -> TasksScreen(prefs)
                 Screen.Settings -> SettingsScreen(prefs)
             }
@@ -337,13 +337,9 @@ fun WeeklyChartCard(weeklyStats: List<DailyStats>, selectedIndex: Int, onDaySele
 }
 
 @Composable
-fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Float, pm: android.content.pm.PackageManager) {
+fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Float, pm: android.content.pm.PackageManager, showTime: Boolean = true) {
     var isBlocked by remember { mutableStateOf(prefs.isAppBlocked(app.packageName)) }
-    val progress = (app.totalTimeInForeground.toFloat() / maxUsage).coerceIn(0f, 1f)
-    val h = app.totalTimeInForeground / 1000 / 60 / 60
-    val m = (app.totalTimeInForeground / 1000 / 60) % 60
-    val timeStr = if (h > 0) "$h soat $m daq" else "$m daq"
-
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,14 +376,22 @@ fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Fl
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(app.appName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(timeStr, style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-            )
+            
+            if (showTime) {
+                val progress = (app.totalTimeInForeground.toFloat() / maxUsage).coerceIn(0f, 1f)
+                val h = app.totalTimeInForeground / 1000 / 60 / 60
+                val m = (app.totalTimeInForeground / 1000 / 60) % 60
+                val timeStr = if (h > 0) "$h soat $m daq" else "$m daq"
+                
+                Text(timeStr, style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            }
         }
         Spacer(modifier = Modifier.width(16.dp))
         Switch(
@@ -401,9 +405,107 @@ fun AppUsageFilledRow(app: AppUsageInfo, prefs: PreferencesManager, maxUsage: Fl
 }
 
 @Composable
-fun BlockingScreen(prefs: PreferencesManager) {
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Bloklash qoidalari", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+fun BlockingScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
+    var selectedTabIndex by remember { mutableStateOf(0) }
+    val tabs = listOf("Ekran (Intervalli bloklash)", "Ilovalarni bloklash")
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(
+            selectedTabIndex = selectedTabIndex,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTabIndex == index,
+                    onClick = { selectedTabIndex = index },
+                    text = { Text(title, fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal) }
+                )
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            when (selectedTabIndex) {
+                0 -> ScreenBlockingTab(prefs)
+                1 -> AppBlockingTab(prefs, usageStatsHelper)
+            }
+        }
+    }
+}
+
+@Composable
+fun ScreenBlockingTab(prefs: PreferencesManager) {
+    val context = LocalContext.current
+    val isSleepModeEnabled = prefs.isSleepModeEnabled()
+    val startTimeStr = String.format(Locale.getDefault(), "%02d:%02d", prefs.getSleepStartHour(), prefs.getSleepStartMinute())
+    var showSleepSettings by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("Rejali bloklashlar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFE0B2)),
+            modifier = Modifier.fillMaxWidth().clickable { showSleepSettings = true }
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Bedtime, contentDescription = null, tint = Color(0xFFE65100))
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Uyqu rejimi", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                    Text("Har kuni $startTimeStr da qulflanadi", style = MaterialTheme.typography.bodySmall, color = Color(0xFFE65100).copy(alpha = 0.8f))
+                }
+                var localSleepMode by remember { mutableStateOf(isSleepModeEnabled) }
+                Switch(
+                    checked = localSleepMode, 
+                    onCheckedChange = { checked ->
+                        localSleepMode = checked
+                        prefs.setSleepModeEnabled(checked)
+                    }
+                )
+            }
+        }
+
+        if (showSleepSettings) {
+            SleepSettingsBottomSheet(
+                prefs = prefs,
+                onDismiss = { showSleepSettings = false },
+                context = context
+            )
+        }
+    }
+}
+
+@Composable
+fun AppBlockingTab(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
+    var installedApps by remember { mutableStateOf(emptyList<AppUsageInfo>()) }
+    
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val apps = usageStatsHelper.getAllInstalledApps()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                installedApps = apps
+            }
+        }
+    }
+
+    if (installedApps.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val pm = LocalContext.current.packageManager
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(installedApps) { app ->
+            AppUsageFilledRow(app = app, prefs = prefs, maxUsage = 1f, pm = pm, showTime = false)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
     }
 }
 
@@ -499,6 +601,70 @@ fun SettingsScreen(prefs: PreferencesManager) {
                 Spacer(modifier = Modifier.width(12.dp))
             }
             Text("Yangilanishni tekshirish")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SleepSettingsBottomSheet(
+    prefs: PreferencesManager,
+    onDismiss: () -> Unit,
+    context: android.content.Context
+) {
+    var startH by remember { mutableStateOf(prefs.getSleepStartHour()) }
+    var startM by remember { mutableStateOf(prefs.getSleepStartMinute()) }
+    var endH by remember { mutableStateOf(prefs.getSleepEndHour()) }
+    var endM by remember { mutableStateOf(prefs.getSleepEndMinute()) }
+
+    val startStr = String.format(Locale.getDefault(), "%02d:%02d", startH, startM)
+    val endStr = String.format(Locale.getDefault(), "%02d:%02d", endH, endM)
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Uyqu rejimini sozlash", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Boshlanish", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        android.app.TimePickerDialog(context, { _, h, m ->
+                            startH = h
+                            startM = m
+                            prefs.setSleepStart(h, m)
+                        }, startH, startM, true).show()
+                    }) {
+                        Text(startStr, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Tugash", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        android.app.TimePickerDialog(context, { _, h, m ->
+                            endH = h
+                            endM = m
+                            prefs.setSleepEnd(h, m)
+                        }, endH, endM, true).show()
+                    }) {
+                        Text(endStr, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            FilledTonalButton(
+                onClick = { LockOverlayManager(context).showPreview(true) },
+                modifier = Modifier.fillMaxWidth().height(56.dp)
+            ) {
+                Icon(Icons.Outlined.Visibility, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Qulf ekranini ko'rish (Preview)")
+            }
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
