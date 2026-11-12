@@ -29,6 +29,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.compose.ui.text.font.FontWeight
@@ -119,16 +121,20 @@ fun HomeScreen(prefs: PreferencesManager, usageStatsHelper: UsageStatsHelper) {
     var selectedDayApps by remember { mutableStateOf(emptyList<AppUsageInfo>()) }
 
     LaunchedEffect(Unit) {
-        val stats = usageStatsHelper.getWeeklyScreenTime()
-        weeklyStats = stats
-
-        val cal = Calendar.getInstance()
-        val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0-based for Sun-Sat
-        selectedDayIndex = currentDayOfWeek
-
-        val todayStats = stats.getOrNull(currentDayOfWeek)
-        if (todayStats != null) {
-            selectedDayApps = usageStatsHelper.getDailyUsage(todayStats.startTime, todayStats.endTime)
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val stats = usageStatsHelper.getWeeklyScreenTime()
+            val cal = Calendar.getInstance()
+            val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0-based for Sun-Sat
+            val todayStats = stats.getOrNull(currentDayOfWeek)
+            val todayApps = if (todayStats != null) {
+                usageStatsHelper.getDailyUsage(todayStats.startTime, todayStats.endTime)
+            } else emptyList()
+            
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                weeklyStats = stats
+                selectedDayIndex = currentDayOfWeek
+                selectedDayApps = todayApps
+            }
         }
     }
 

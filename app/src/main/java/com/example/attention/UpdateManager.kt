@@ -20,7 +20,15 @@ import java.net.URL
 
 class UpdateManager(private val context: Context) {
     private val repoUrl = "https://api.github.com/repos/joxacybers/focus/releases/latest"
-    private val currentVersion = "1.0.0" // You can also read this from BuildConfig.VERSION_NAME
+    
+    private val currentVersion: String by lazy {
+        try {
+            val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            pInfo.versionName ?: "1.0.0"
+        } catch (e: Exception) {
+            "1.0.0"
+        }
+    }
 
     suspend fun checkForUpdates(): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -36,11 +44,11 @@ class UpdateManager(private val context: Context) {
 
                 val jsonObject = JSONObject(response)
                 val tagName = jsonObject.getString("tag_name")
-
-                // Compare tags, e.g., "v1.0.1" vs "v1.0.0" (currentVersion)
+                
                 val latestVersion = tagName.replace("v", "")
-
-                if (latestVersion > currentVersion) {
+                
+                // Direct comparison for versions to avoid repeatedly downloading the same version
+                if (latestVersion != currentVersion) {
                     val assets = jsonObject.getJSONArray("assets")
                     if (assets.length() > 0) {
                         val downloadUrl = assets.getJSONObject(0).getString("browser_download_url")

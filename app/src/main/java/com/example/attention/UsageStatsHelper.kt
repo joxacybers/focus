@@ -24,17 +24,15 @@ class UsageStatsHelper(private val context: Context) {
                 // Filter out our own app
                 if (stats.packageName == context.packageName) return@mapNotNull null
 
-                // Filter out system apps/services by checking if they have a launcher intent
-                val launchIntent = packageManager.getLaunchIntentForPackage(stats.packageName)
-                if (launchIntent == null) return@mapNotNull null
-
-                // Specific exclusions (launchers)
-                val excludeList = listOf("com.google.android.apps.nexuslauncher", "com.android.launcher", "com.sec.android.app.launcher", "com.miui.home")
+                // Exclude system launchers or basic core packages that users don't care about
+                val excludeList = listOf("com.google.android.apps.nexuslauncher", "com.android.launcher", "com.sec.android.app.launcher", "com.miui.home", "com.android.systemui")
                 if (excludeList.contains(stats.packageName)) return@mapNotNull null
 
                 try {
                     val appInfo = packageManager.getApplicationInfo(stats.packageName, 0)
                     val appName = packageManager.getApplicationLabel(appInfo).toString()
+                    
+                    // Allow everything else that actually has a name and icon and took screen time
                     AppUsageInfo(stats.packageName, appName, stats.totalTimeInForeground)
                 } catch (e: Exception) {
                     null
