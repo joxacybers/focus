@@ -38,22 +38,11 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: chmod +x gradlew
 
-      - name: Build Release APK (Unsigned)
+      - name: Build APKs
         if: steps.check_tag.outputs.exists == 'false'
-        run: ./gradlew assembleRelease
-
-      - name: Sign APK
-        if: steps.check_tag.outputs.exists == 'false'
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        # If secrets are missing, it will fallback to unsigned release which can be installed with debug flag.
-        continue-on-error: true
+        run: |
+          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Create Release and Upload APK
         if: steps.check_tag.outputs.exists == 'false'
@@ -65,8 +54,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            app/build/outputs/apk/release/app-release-signed.apk
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/debug/app-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
