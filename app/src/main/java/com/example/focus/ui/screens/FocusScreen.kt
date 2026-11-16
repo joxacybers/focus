@@ -4,6 +4,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessibilityNew
@@ -65,8 +65,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -82,7 +85,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -911,9 +913,14 @@ private fun SettingSwitch(
     }
 }
 
+private enum class ActiveTimeTarget {
+    START, END
+}
+
 /**
- * Enhanced dialog to configure Schedule name, time range (hour:minute), and weekday recurrence
+ * Enhanced dialog to configure Schedule name, time range via visual picker/presets, and weekday recurrence
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EnhancedScheduleDialog(
     onDismiss: () -> Unit,
@@ -926,6 +933,8 @@ private fun EnhancedScheduleDialog(
     var endMinute by remember { mutableIntStateOf(0) }
     var selectedDays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) } // 1=Mon .. 7=Sun
 
+    var activeTimePicker by remember { mutableStateOf<ActiveTimeTarget?>(null) }
+
     val dayNames = listOf(
         1 to "Du",
         2 to "Se",
@@ -935,6 +944,22 @@ private fun EnhancedScheduleDialog(
         6 to "Sha",
         7 to "Yak"
     )
+
+    // Calculate total duration in minutes
+    val startTotalMinutes = startHour * 60 + startMinute
+    val endTotalMinutes = endHour * 60 + endMinute
+    val durationMinutes = if (endTotalMinutes >= startTotalMinutes) {
+        endTotalMinutes - startTotalMinutes
+    } else {
+        (24 * 60 - startTotalMinutes) + endTotalMinutes
+    }
+    val durHours = durationMinutes / 60
+    val durMins = durationMinutes % 60
+    val durationText = buildString {
+        append("Davomiyligi: ")
+        if (durHours > 0) append("$durHours soat ")
+        if (durMins > 0 || durHours == 0) append("$durMins daqiqa")
+    }.trim()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -949,7 +974,9 @@ private fun EnhancedScheduleDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Name Input
@@ -964,32 +991,83 @@ private fun EnhancedScheduleDialog(
 
                 // Time Range Section
                 Text(
-                    text = "Vaqt oralig'i:",
+                    text = "Vaqt oralig'i (O'zgartirish uchun bosing):",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
+
+                // Visual interactive time cards
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TimeBoxSelector(
+                    TimeDisplayCard(
                         label = "Boshlanish",
                         hour = startHour,
                         minute = startMinute,
-                        onHourChange = { startHour = it },
-                        onMinuteChange = { startMinute = it },
+                        onClick = { activeTimePicker = ActiveTimeTarget.START },
                         modifier = Modifier.weight(1f)
                     )
-                    Text("—", fontWeight = FontWeight.Bold)
-                    TimeBoxSelector(
+                    Text("—", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TimeDisplayCard(
                         label = "Tugash",
                         hour = endHour,
                         minute = endMinute,
-                        onHourChange = { endHour = it },
-                        onMinuteChange = { endMinute = it },
+                        onClick = { activeTimePicker = ActiveTimeTarget.END },
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                // Duration badge
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "⏱ $durationText",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Quick presets: +30m, +1h, +2h, +3h, +4h
+                Text(
+                    text = "Tezkor davomiylik qo'shish:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        30 to "+30 daq",
+                        60 to "+1 soat",
+                        120 to "+2 soat",
+                        180 to "+3 soat",
+                        240 to "+4 soat"
+                    ).forEach { (addedMins, label) ->
+                        AssistChip(
+                            onClick = {
+                                val total = (startHour * 60 + startMinute + addedMins) % (24 * 60)
+                                endHour = total / 60
+                                endMinute = total % 60
+                            },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
                 }
 
                 // Weekday Recurrence Section
@@ -1083,72 +1161,133 @@ private fun EnhancedScheduleDialog(
             }
         }
     )
+
+    if (activeTimePicker != null) {
+        val isStart = activeTimePicker == ActiveTimeTarget.START
+        Material3TimePickerDialog(
+            title = if (isStart) "Boshlanish vaqtini tanlang" else "Tugash vaqtini tanlang",
+            initialHour = if (isStart) startHour else endHour,
+            initialMinute = if (isStart) startMinute else endMinute,
+            onConfirm = { h, m ->
+                if (isStart) {
+                    startHour = h
+                    startMinute = m
+                } else {
+                    endHour = h
+                    endMinute = m
+                }
+                activeTimePicker = null
+            },
+            onDismiss = { activeTimePicker = null }
+        )
+    }
 }
 
 /**
- * Clean numeric time input box for hour and minute
+ * Clickable card displaying hour and minute with clock icon
  */
 @Composable
-private fun TimeBoxSelector(
+private fun TimeDisplayCard(
     label: String,
     hour: Int,
     minute: Int,
-    onHourChange: (Int) -> Unit,
-    onMinuteChange: (Int) -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(12.dp),
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                CompactNumberField(
-                    value = hour,
-                    max = 23,
-                    onValueChange = onHourChange
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
-                Text(":", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 2.dp))
-                CompactNumberField(
-                    value = minute,
-                    max = 59,
-                    onValueChange = onMinuteChange
+                Text(
+                    text = String.format(Locale.US, "%02d:%02d", hour, minute),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "O'zgartirish",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
 
+/**
+ * Material 3 Visual Clock Time Picker Dialog
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CompactNumberField(
-    value: Int,
-    max: Int,
-    onValueChange: (Int) -> Unit
+private fun Material3TimePickerDialog(
+    title: String,
+    initialHour: Int,
+    initialMinute: Int,
+    onConfirm: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var textValue by remember(value) { mutableStateOf(String.format(Locale.US, "%02d", value)) }
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = true
+    )
 
-    OutlinedTextField(
-        value = textValue,
-        onValueChange = { input ->
-            val digits = input.filter { it.isDigit() }.take(2)
-            textValue = digits
-            digits.toIntOrNull()?.let { num ->
-                onValueChange(num.coerceIn(0, max))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                TimePicker(
+                    state = timePickerState,
+                    colors = TimePickerDefaults.colors()
+                )
             }
         },
-        singleLine = true,
-        textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.width(48.dp),
-        shape = RoundedCornerShape(8.dp)
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(timePickerState.hour, timePickerState.minute) },
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("Tanlash")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Bekor qilish")
+            }
+        }
     )
 }
 
