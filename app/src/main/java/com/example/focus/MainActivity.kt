@@ -11,10 +11,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FlashlightOff
-import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
@@ -138,7 +138,8 @@ fun FocusMainApp() {
                         Icon(
                             imageVector = tabs[selectedTabIndex].selectedIcon,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
                         )
                         Text(
                             text = when (tabs[selectedTabIndex]) {
@@ -146,28 +147,21 @@ fun FocusMainApp() {
                                 MainTab.STUDY -> "Focus • Study"
                                 MainTab.SETTINGS -> "Sozlamalar"
                             },
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
                 },
-                actions = {
-                    if (state.hasFlashUnit) {
-                        IconButton(onClick = { FocusRepository.toggleTorch() }) {
-                            Icon(
-                                imageVector = if (state.isTorchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
-                                contentDescription = "Fonor",
-                                tint = if (state.isTorchOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                modifier = Modifier.height(62.dp),
+                tonalElevation = 2.dp
+            ) {
                 tabs.forEachIndexed { index, tab ->
                     val selected = selectedTabIndex == index
                     NavigationBarItem(
@@ -176,12 +170,14 @@ fun FocusMainApp() {
                         icon = {
                             Icon(
                                 imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                contentDescription = tab.title
+                                contentDescription = tab.title,
+                                modifier = Modifier.size(20.dp)
                             )
                         },
                         label = {
                             Text(
                                 text = tab.title,
+                                style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                             )
                         }
