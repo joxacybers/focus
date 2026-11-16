@@ -254,16 +254,6 @@ class FocusForegroundService : Service() {
             SessionMode.STUDY_POMODORO -> "Pomodoro ${state.currentRound}/${state.totalRounds} • Qolgan vaqt: $timeFormatted"
         }
 
-        val stopIntent = Intent(this, FocusForegroundService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            1,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setContentTitle(state.sessionTitle)
@@ -273,7 +263,6 @@ class FocusForegroundService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "🛠️ Dev Test: To'xtatish", stopPendingIntent)
             .build()
     }
 

@@ -49,7 +49,6 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BatteryStd
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
@@ -585,39 +584,7 @@ private fun FullLockScreenContent(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // DEV MODE TEST BUTTON (Productionga chiqishdan oldin osongina o'chiriladi)
-                Surface(
-                    color = Color(0xFFFF9800).copy(alpha = 0.25f),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, Color(0xFFFF9800).copy(alpha = 0.8f), RoundedCornerShape(14.dp))
-                        .clickable { onEmergencyStop() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.BugReport,
-                            contentDescription = null,
-                            tint = Color(0xFFFFB74D),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "🛠️ DEV TEST: Qulfni darhol ochish",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFFFB74D)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // Bottom row: Screen Pinning helper & Emergency Unlock
                 Row(
@@ -925,16 +892,6 @@ private fun EmergencyUnlockDialog(
                         isError = errorText != null,
                         supportingText = errorText?.let { msg -> { Text(msg) } }
                     )
-
-                    // Dev Mode instant unlock in dialog
-                    OutlinedButton(
-                        onClick = onConfirmUnlock,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.BugReport, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("🛠️ Dev Test: Misolsiz darhol ochish")
-                    }
                 } else {
                     Text("Haqiqatan ham joriy Focus/Study sessiyasini muddatidan oldin to'xtatmoqchimisiz?")
                 }
