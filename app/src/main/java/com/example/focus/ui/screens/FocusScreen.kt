@@ -1,12 +1,12 @@
 package com.example.focus.ui.screens
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,11 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -37,21 +34,24 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,13 +60,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.focus.data.FocusRepository
 import com.example.focus.data.FocusSchedule
 import com.example.focus.data.FocusState
@@ -74,146 +77,38 @@ import com.example.focus.data.SessionMode
 import com.example.focus.ui.lock.LockScreenActivity
 import java.util.Locale
 import java.util.UUID
-import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FocusScreen(
     state: FocusState,
-    onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var selectedMinutes by remember { mutableIntStateOf(30) }
-    var sessionTitle by remember { mutableStateOf("Chuqur diqqat") }
     var showAddScheduleDialog by remember { mutableStateOf(false) }
 
-    val hasOverlay = FocusRepository.hasOverlayPermission(context)
-    val hasAccessibility = FocusRepository.isAccessibilityServiceEnabled(context)
-    val hasDnd = FocusRepository.hasDndPermission(context)
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Active session banner if currently locked
-        if (state.isLocked) {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "Qulflash faol",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Text(
-                            text = "${state.sessionTitle} • Qolgan: ${state.remainingSeconds / 60}d ${state.remainingSeconds % 60}s",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    FilledTonalButton(
-                        onClick = { LockScreenActivity.launch(context) },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Ekran", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
+    // Recheck permissions on resume
+    var permissionTrigger by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permissionTrigger++
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
-        // Permission reminder banner (compact)
-        if (!hasOverlay || !hasAccessibility || !hasDnd) {
-            Surface(
-                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToSettings)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.WarningAmber,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "To'liq bloklash uchun ruxsatlar kerak",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Control Panel va ilovalarni to'sish uchun sozlang",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    TextButton(onClick = onNavigateToSettings) {
-                        Text("Yoqish", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+    val hasOverlay = remember(permissionTrigger) { FocusRepository.hasOverlayPermission(context) }
+    val hasAccessibility = remember(permissionTrigger) { FocusRepository.isAccessibilityServiceEnabled(context) }
+    val hasDnd = remember(permissionTrigger) { FocusRepository.hasDndPermission(context) }
 
-        // -------------------------------------------------------------
-        // 1. COMPACT "TELEFONNI VAQTINCHA QULFLASH" SECTION
-        // -------------------------------------------------------------
-        ElevatedCard(
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Header Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,259 +119,258 @@ fun FocusScreen(
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
-                        Column {
-                            Text(
-                                text = "Vaqtincha qulflash",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Faqat Telefon, Fonor va Xabarlar ruxsat etiladi",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    // Compact Duration Badge
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        val hours = selectedMinutes / 60
-                        val mins = selectedMinutes % 60
-                        val badgeText = if (hours > 0) {
-                            if (mins > 0) "${hours}s ${mins}d" else "${hours} soat"
-                        } else {
-                            "$selectedMinutes daq"
-                        }
                         Text(
-                            text = badgeText,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            text = "Focus",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
-                }
-
-                // Compact Title Field
-                OutlinedTextField(
-                    value = sessionTitle,
-                    onValueChange = { sessionTitle = it },
-                    label = { Text("Sessiya maqsadi") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp)
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-
-                // Compact Slider Row
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Slider(
-                        value = selectedMinutes.toFloat(),
-                        onValueChange = { selectedMinutes = it.roundToInt().coerceAtLeast(1) },
-                        valueRange = 1f..180f,
-                        modifier = Modifier.height(28.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "1 daqiqa",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "3 soat (180 daq)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Quick Presets FlowRow
-                val presets = listOf(
-                    3 to "3d",
-                    15 to "15d",
-                    25 to "25d",
-                    45 to "45d",
-                    60 to "1 soat",
-                    120 to "2 soat"
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showAddScheduleDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Yangi vaqt oralig'i qo'shish",
+                    modifier = Modifier.size(26.dp)
                 )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    presets.forEach { (mins, label) ->
-                        FilterChip(
-                            selected = selectedMinutes == mins,
-                            onClick = { selectedMinutes = mins },
-                            label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                            shape = RoundedCornerShape(10.dp)
-                        )
-                    }
-                }
-
-                // Compact Action Button
-                Button(
-                    onClick = {
-                        FocusRepository.startFocusSession(
-                            context = context,
-                            durationMinutes = selectedMinutes,
-                            title = sessionTitle.ifBlank { "Focus rejimi" },
-                            mode = SessionMode.FOCUS
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Qulflashni boshlash ($selectedMinutes daq)",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
         }
-
-        // -------------------------------------------------------------
-        // ALLOWED APPS CHIPS (Telefon, Fonor, Xabarlar)
-        // -------------------------------------------------------------
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // 1. ACTIVE SESSION BANNER (agar hozir qulflangan bo'lsa)
+            if (state.isLocked) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "Bloklash davom etmoqda",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "${state.sessionTitle} • Qolgan: ${state.remainingSeconds / 60}d ${state.remainingSeconds % 60}s",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        FilledTonalButton(
+                            onClick = { LockScreenActivity.launch(context) },
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Blok ekrani")
+                        }
+                    }
+                }
+            }
+
+            // 2. PERMISSION BANNER (agar ruxsatlar to'liq berilmagan bo'lsa)
+            if (!hasOverlay || !hasAccessibility || !hasDnd) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "To'liq qulflash uchun ruxsatlar kerak",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "Control Panel va boshqa ilovalarni bloklash uchun Maxsus imkoniyatlar (Accessibility) va Ustki oyna (Overlay) ruxsatlarini yoqing:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (!hasAccessibility) {
+                                FilledTonalButton(
+                                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Accessibility", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (!hasOverlay) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        context.startActivity(
+                                            Intent(
+                                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                                "package:${context.packageName}".toUri()
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Overlay", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. SECTION HEADER (Intervalli bloklash jadvallari)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Ruxsat etilgan vositalar:",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AssistChip(
-                        onClick = { FocusRepository.launchDialerApp(context) },
-                        label = { Text("Telefon", style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(14.dp))
-                        },
-                        shape = RoundedCornerShape(10.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
                     )
-                    AssistChip(
-                        onClick = { FocusRepository.toggleTorch() },
-                        label = { Text("Fonor", style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = {
-                            Icon(Icons.Default.FlashlightOn, contentDescription = null, modifier = Modifier.size(14.dp))
-                        },
-                        shape = RoundedCornerShape(10.dp)
+                    Text(
+                        text = "Intervalli bloklash jadvallari",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    AssistChip(
-                        onClick = { FocusRepository.launchMessagesApp(context) },
-                        label = { Text("SMS", style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = {
-                            Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null, modifier = Modifier.size(14.dp))
-                        },
-                        shape = RoundedCornerShape(10.dp)
+                }
+
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "${state.schedules.size} ta",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
             }
-        }
 
-        // -------------------------------------------------------------
-        // 2. ENHANCED & COMPACT SCHEDULES SECTION (Vaqt jadvallari)
-        // -------------------------------------------------------------
-        ElevatedCard(
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Section Title Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // 4. SCHEDULES LIST / EMPTY STATE
+            if (state.schedules.isEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp, horizontal = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Schedule,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(48.dp)
                         )
-                        Column {
-                            Text(
-                                text = "Vaqt jadvallari",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Hafta kunlari va belgilangan vaqtda avtomatik qulflash",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    FilledTonalButton(
-                        onClick = { showAddScheduleDialog = true },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Qo'shish", style = MaterialTheme.typography.labelMedium)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Hozircha intervalli jadvallar yo'q",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Belgilangan vaqt oralig'ida telefonni qulflash uchun pastdagi + tugmasini bosing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
-
-                // Schedules List
-                if (state.schedules.isEmpty()) {
-                    Text(
-                        text = "Hozircha rejalashtirilgan jadvallar yo'q. Yangi jadval qo'shish uchun yuqoridagi tugmani bosing.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 4.dp)
+            } else {
+                state.schedules.forEach { schedule ->
+                    CompactScheduleItemRow(
+                        schedule = schedule,
+                        onToggle = { enabled -> FocusRepository.toggleSchedule(schedule.id, enabled) },
+                        onStartNow = {
+                            val startTotal = schedule.startHour * 60 + schedule.startMinute
+                            val endTotal = schedule.endHour * 60 + schedule.endMinute
+                            val duration = if (endTotal > startTotal) {
+                                endTotal - startTotal
+                            } else {
+                                (24 * 60 - startTotal) + endTotal
+                            }
+                            FocusRepository.startFocusSession(
+                                context = context,
+                                durationMinutes = duration.coerceAtLeast(5),
+                                title = schedule.title,
+                                mode = SessionMode.FOCUS
+                            )
+                        },
+                        onDelete = { FocusRepository.deleteSchedule(schedule.id) }
                     )
-                } else {
-                    state.schedules.forEach { schedule ->
-                        CompactScheduleItemRow(
-                            schedule = schedule,
-                            onToggle = { enabled -> FocusRepository.toggleSchedule(schedule.id, enabled) },
-                            onStartNow = {
-                                val startTotal = schedule.startHour * 60 + schedule.startMinute
-                                val endTotal = schedule.endHour * 60 + schedule.endMinute
-                                val duration = if (endTotal > startTotal) {
-                                    endTotal - startTotal
-                                } else {
-                                    (24 * 60 - startTotal) + endTotal
-                                }
-                                FocusRepository.startFocusSession(
-                                    context = context,
-                                    durationMinutes = duration.coerceAtLeast(5),
-                                    title = schedule.title,
-                                    mode = SessionMode.FOCUS
-                                )
-                            },
-                            onDelete = { FocusRepository.deleteSchedule(schedule.id) }
-                        )
-                    }
                 }
             }
+
+            // Extra space at bottom so FAB doesn't obscure the last item
+            Spacer(modifier = Modifier.height(72.dp))
         }
     }
 
@@ -502,14 +396,14 @@ private fun CompactScheduleItemRow(
     onDelete: () -> Unit
 ) {
     OutlinedCard(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Top row: Title + Time + Switch
             Row(
@@ -520,7 +414,7 @@ private fun CompactScheduleItemRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = schedule.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -534,21 +428,16 @@ private fun CompactScheduleItemRow(
                             schedule.endHour,
                             schedule.endMinute
                         ),
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (schedule.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Switch(
-                        checked = schedule.enabled,
-                        onCheckedChange = onToggle
-                    )
-                }
+                Switch(
+                    checked = schedule.enabled,
+                    onCheckedChange = onToggle
+                )
             }
 
             // Bottom row: Repeat days description + Quick Actions (Hozir boshlash / O'chirish)
@@ -557,7 +446,6 @@ private fun CompactScheduleItemRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Day indicators
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -565,7 +453,7 @@ private fun CompactScheduleItemRow(
                     Icon(
                         imageVector = Icons.Default.Repeat,
                         contentDescription = null,
-                        modifier = Modifier.size(13.dp),
+                        modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     val daysLabel = formatScheduleDays(schedule.daysOfWeek)
@@ -579,28 +467,30 @@ private fun CompactScheduleItemRow(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FilledTonalIconButton(
+                    FilledTonalButton(
                         onClick = onStartNow,
-                        modifier = Modifier.size(30.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Hozir boshlash",
                             modifier = Modifier.size(16.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Boshlash", style = MaterialTheme.typography.labelSmall)
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(34.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "O'chirish",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -612,13 +502,12 @@ private fun CompactScheduleItemRow(
 /**
  * Enhanced dialog to configure Schedule name, time range (hour:minute), and weekday recurrence
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EnhancedScheduleDialog(
     onDismiss: () -> Unit,
     onAdd: (FocusSchedule) -> Unit
 ) {
-    var title by remember { mutableStateOf("Ertalabki chuqur diqqat") }
+    var title by remember { mutableStateOf("Ish va o'qish vaqti") }
     var startHour by remember { mutableIntStateOf(9) }
     var startMinute by remember { mutableIntStateOf(0) }
     var endHour by remember { mutableIntStateOf(12) }
@@ -643,7 +532,7 @@ private fun EnhancedScheduleDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text("Vaqt jadvalini sozlash", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Intervalli jadval qo'shish", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
         },
         text = {
