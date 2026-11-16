@@ -11,8 +11,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.focus"
-        minSdk = 36
-        targetSdk = 37
+        minSdk = 28
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 

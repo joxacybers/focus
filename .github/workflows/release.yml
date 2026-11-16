@@ -28,8 +28,9 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -50,13 +51,8 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Update versionName in app/build.gradle.kts
-        run: |
-          sed -i "s/versionName = \".*\"/versionName = \"${{ steps.version.outputs.version_name }}\"/" app/build.gradle.kts
-          sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
-
-      - name: Build Debug & Release APKs
-        run: ./gradlew assembleDebug
+      - name: Build APK
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Prepare Release APK Asset
         run: |
@@ -77,8 +73,9 @@ jobs:
           body: |
             ## Focus ${{ steps.version.outputs.tag_name }} — Avtomatik Yangilanish (Auto Release)
             
-            - **Ilova ichidan yangilash:** Focus ilovasining **Sozlamalar** bo'limidagi **"Yangilanishni tekshirish"** tugmasi orqali to'g'ridan-to'g'ri yuklab olib o'rnatishingiz mumkin (`joxacybers/focus`).
-            - **O'zgarishlar (Commit):** `${{ github.sha }}`
+            - **Yuklab olish:** Quyidagi `Focus-${{ steps.version.outputs.tag_name }}.apk` faylini yuklab olib o'rnating.
+            - **Ilova ichidan yangilash:** Focus ilovasining **Sozlamalar** bo'limidagi **"Yangilanishni tekshirish"** tugmasi orqali to'g'ridan-to'g'ri yangilashingiz mumkin (`joxacybers/focus`).
+            - **Commit:** `${{ github.sha }}`
           draft: false
           prerelease: false
           generate_release_notes: true
