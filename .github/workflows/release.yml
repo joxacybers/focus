@@ -51,6 +51,11 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
 
+      - name: Update Version Code & Name
+        run: |
+          sed -i 's/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/' app/build.gradle.kts
+          sed -i 's/versionName = ".*"/versionName = "${{ steps.version.outputs.version_name }}"/' app/build.gradle.kts
+
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace --no-daemon
 
