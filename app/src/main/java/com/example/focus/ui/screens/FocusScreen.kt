@@ -21,13 +21,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -35,13 +48,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -50,16 +66,20 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -70,11 +90,15 @@ import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.focus.BuildConfig
 import com.example.focus.data.FocusRepository
 import com.example.focus.data.FocusSchedule
 import com.example.focus.data.FocusState
 import com.example.focus.data.SessionMode
 import com.example.focus.ui.lock.LockScreenActivity
+import com.example.focus.update.GitHubUpdateManager
+import com.example.focus.update.UpdateStatus
+import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
@@ -86,6 +110,7 @@ fun FocusScreen(
 ) {
     val context = LocalContext.current
     var showAddScheduleDialog by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
 
     // Recheck permissions on resume
     var permissionTrigger by remember { mutableIntStateOf(0) }
@@ -103,6 +128,8 @@ fun FocusScreen(
     val hasOverlay = remember(permissionTrigger) { FocusRepository.hasOverlayPermission(context) }
     val hasAccessibility = remember(permissionTrigger) { FocusRepository.isAccessibilityServiceEnabled(context) }
     val hasDnd = remember(permissionTrigger) { FocusRepository.hasDndPermission(context) }
+    val hasNotifListener = remember(permissionTrigger) { FocusRepository.isNotificationListenerEnabled(context) }
+    val hasUsageStats = remember(permissionTrigger) { FocusRepository.hasUsageStatsPermission(context) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -117,12 +144,21 @@ fun FocusScreen(
                             imageVector = Icons.Default.Lock,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                         Text(
                             text = "Focus",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showSettingsSheet = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Sozlamalar va Ruxsatlar",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -160,7 +196,7 @@ fun FocusScreen(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer
                     ),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -211,62 +247,43 @@ fun FocusScreen(
             // 2. PERMISSION BANNER (agar ruxsatlar to'liq berilmagan bo'lsa)
             if (!hasOverlay || !hasAccessibility || !hasDnd) {
                 Surface(
-                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showSettingsSheet = true }
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
+                            modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.WarningAmber,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
-                            Text(
-                                text = "To'liq qulflash uchun ruxsatlar kerak",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column {
+                                Text(
+                                    text = "Tizim ruxsatlari kerak",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "To'liq qulflash uchun Sozlamalardan ruxsat bering",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                        Text(
-                            text = "Control Panel va boshqa ilovalarni bloklash uchun Maxsus imkoniyatlar (Accessibility) va Ustki oyna (Overlay) ruxsatlarini yoqing:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (!hasAccessibility) {
-                                FilledTonalButton(
-                                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Accessibility", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                            if (!hasOverlay) {
-                                FilledTonalButton(
-                                    onClick = {
-                                        context.startActivity(
-                                            Intent(
-                                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                                "package:${context.packageName}".toUri()
-                                            )
-                                        )
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Overlay", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
+                        TextButton(onClick = { showSettingsSheet = true }) {
+                            Text("Sozlash", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -286,7 +303,7 @@ fun FocusScreen(
                         imageVector = Icons.Default.Schedule,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "Intervalli bloklash jadvallari",
@@ -296,14 +313,14 @@ fun FocusScreen(
                 }
 
                 Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(12.dp)
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(10.dp)
                 ) {
                     Text(
                         text = "${state.schedules.size} ta",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
@@ -312,8 +329,8 @@ fun FocusScreen(
             // 4. SCHEDULES LIST / EMPTY STATE
             if (state.schedules.isEmpty()) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(18.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -326,10 +343,10 @@ fun FocusScreen(
                         Icon(
                             imageVector = Icons.Default.Schedule,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(48.dp)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(46.dp)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Hozircha intervalli jadvallar yo'q",
                             style = MaterialTheme.typography.titleMedium,
@@ -369,7 +386,6 @@ fun FocusScreen(
                 }
             }
 
-            // Extra space at bottom so FAB doesn't obscure the last item
             Spacer(modifier = Modifier.height(72.dp))
         }
     }
@@ -383,10 +399,22 @@ fun FocusScreen(
             }
         )
     }
+
+    if (showSettingsSheet) {
+        FocusSettingsBottomSheet(
+            state = state,
+            hasOverlay = hasOverlay,
+            hasAccessibility = hasAccessibility,
+            hasDnd = hasDnd,
+            hasNotifListener = hasNotifListener,
+            hasUsageStats = hasUsageStats,
+            onDismiss = { showSettingsSheet = false }
+        )
+    }
 }
 
 /**
- * Compact, modern row displaying a scheduled focus interval with repetition chips
+ * Compact, modern grayscale row displaying a scheduled focus interval
  */
 @Composable
 private fun CompactScheduleItemRow(
@@ -396,7 +424,7 @@ private fun CompactScheduleItemRow(
     onDelete: () -> Unit
 ) {
     OutlinedCard(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -440,7 +468,7 @@ private fun CompactScheduleItemRow(
                 )
             }
 
-            // Bottom row: Repeat days description + Quick Actions (Hozir boshlash / O'chirish)
+            // Bottom row: Repeat days description + Quick Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -471,12 +499,12 @@ private fun CompactScheduleItemRow(
                 ) {
                     FilledTonalButton(
                         onClick = onStartNow,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Hozir boshlash",
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Boshlash", style = MaterialTheme.typography.labelSmall)
@@ -496,6 +524,390 @@ private fun CompactScheduleItemRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * Settings & Permissions Modal Bottom Sheet (Online Update, System Permissions, Preferences)
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FocusSettingsBottomSheet(
+    state: FocusState,
+    hasOverlay: Boolean,
+    hasAccessibility: Boolean,
+    hasDnd: Boolean,
+    hasNotifListener: Boolean,
+    hasUsageStats: Boolean,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val updateStatus by GitHubUpdateManager.status.collectAsState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var githubOwnerInput by remember(state.githubOwner) { mutableStateOf(state.githubOwner) }
+    var githubRepoInput by remember(state.githubRepo) { mutableStateOf(state.githubRepo) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text(
+                        text = "Sozlamalar va Ruxsatlar",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Yopish")
+                }
+            }
+
+            // 1. GITHUB ONLINE UPDATE CARD
+            OutlinedCard(
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Column {
+                            Text(
+                                text = "GitHub Online Yangilanish",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Joriy versiya: v${BuildConfig.VERSION_NAME} (kod: ${BuildConfig.VERSION_CODE})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = githubOwnerInput,
+                            onValueChange = {
+                                githubOwnerInput = it
+                                FocusRepository.updateSettings(githubOwner = it, githubRepo = githubRepoInput)
+                            },
+                            label = { Text("Owner") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value = githubRepoInput,
+                            onValueChange = {
+                                githubRepoInput = it
+                                FocusRepository.updateSettings(githubOwner = githubOwnerInput, githubRepo = it)
+                            },
+                            label = { Text("Repo") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            FocusRepository.updateSettings(githubOwner = githubOwnerInput, githubRepo = githubRepoInput)
+                            scope.launch {
+                                GitHubUpdateManager.checkForUpdates(owner = githubOwnerInput, repo = githubRepoInput)
+                            }
+                        },
+                        enabled = updateStatus !is UpdateStatus.Checking,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        if (updateStatus is UpdateStatus.Checking) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Tekshirilmoqda...")
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Yangilanishni tekshirish", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    when (val status = updateStatus) {
+                        is UpdateStatus.UpToDate -> {
+                            Text(
+                                text = "Sizda eng so'nggi versiya o'rnatilgan! (v${status.currentVersion})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        is UpdateStatus.UpdateAvailable -> {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "Yangi versiya chiqdi: ${status.releaseInfo.tagName}",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Button(
+                                        onClick = { GitHubUpdateManager.downloadAndInstallApk(context, status.releaseInfo) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Yuklab olish va o'rnatish")
+                                    }
+                                }
+                            }
+                        }
+                        is UpdateStatus.Downloading -> {
+                            Text(
+                                text = "Yuklab olinmoqda... Tugagach o'rnatish oynasi ochiladi.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        is UpdateStatus.ReadyToInstall -> {
+                            Button(
+                                onClick = { GitHubUpdateManager.installApk(context, status.apkFile) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("O'rnatishni boshlash")
+                            }
+                        }
+                        is UpdateStatus.Error -> {
+                            Text(
+                                text = status.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            }
+
+            // 2. SYSTEM PERMISSIONS SECTION
+            OutlinedCard(
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text(
+                            text = "Tizim ruxsatlari",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    PermissionRow(
+                        icon = Icons.Default.AccessibilityNew,
+                        title = "Maxsus imkoniyatlar (Accessibility)",
+                        subtitle = "Boshqa ilovalarni va Control Panel pardasini yopadi",
+                        isGranted = hasAccessibility,
+                        onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.Layers,
+                        title = "Ustki oyna (Overlay)",
+                        subtitle = "Tepadagi status bar va Control Panelni to'sib turadi",
+                        isGranted = hasOverlay,
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    "package:${context.packageName}".toUri()
+                                )
+                            )
+                        }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.DoNotDisturbOn,
+                        title = "Bezovta qilinmasin (DND)",
+                        subtitle = "Qulf vaqtida tovush va xabarlarni ovozsiz qiladi",
+                        isGranted = hasDnd,
+                        onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.NotificationsActive,
+                        title = "Bildirishnomalar filtri",
+                        subtitle = "Chalg'ituvchi bildirishnomalarni avtomatik tozalaydi",
+                        isGranted = hasNotifListener,
+                        onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.QueryStats,
+                        title = "Foydalanish statistikasi (Usage Access)",
+                        subtitle = "Begona ilova ochilganda darhol blok ekraniga qaytaradi",
+                        isGranted = hasUsageStats,
+                        onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+                    )
+                }
+            }
+
+            // 3. LOCK PREFERENCES
+            OutlinedCard(
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Qulflash parametrlari",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    SettingSwitch(
+                        title = "Qat'iy rejim (Strict Mode)",
+                        subtitle = "Faqat matematik misol yechib chiqish mumkin",
+                        checked = state.strictMode,
+                        onCheckedChange = { FocusRepository.updateSettings(strictMode = it) }
+                    )
+                    HorizontalDivider()
+                    SettingSwitch(
+                        title = "Control Panelni to'sish",
+                        subtitle = "Tepadan tushadigan boshqaruv panelini bloklaydi",
+                        checked = state.blockControlPanel,
+                        onCheckedChange = { FocusRepository.updateSettings(blockControlPanel = it) }
+                    )
+                    HorizontalDivider()
+                    SettingSwitch(
+                        title = "Avtomatik ovozsiz (DND) rejim",
+                        subtitle = "Qulflanganda tovushlarni o'chiradi",
+                        checked = state.autoDndAndMute,
+                        onCheckedChange = { FocusRepository.updateSettings(autoDndAndMute = it) }
+                    )
+                    HorizontalDivider()
+                    SettingSwitch(
+                        title = "Ekranni doim yoniq saqlash",
+                        subtitle = "Soat va taymer doimo ko'rinib turishi uchun",
+                        checked = state.keepScreenAwake,
+                        onCheckedChange = { FocusRepository.updateSettings(keepScreenAwake = it) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun PermissionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    isGranted: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Column {
+                Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        if (isGranted) {
+            FilledTonalButton(onClick = onClick, shape = RoundedCornerShape(8.dp)) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Faol", style = MaterialTheme.typography.labelSmall)
+            }
+        } else {
+            Button(onClick = onClick, shape = RoundedCornerShape(8.dp)) {
+                Text("Yoqish", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitch(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

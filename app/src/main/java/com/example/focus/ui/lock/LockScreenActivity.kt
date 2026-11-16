@@ -360,9 +360,9 @@ private fun FullLockScreenContent(
 
     val backgroundBrush = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF090D16),
-            Color(0xFF101726),
-            Color(0xFF090D16)
+            Color(0xFF0D0D0D),
+            Color(0xFF171717),
+            Color(0xFF0D0D0D)
         )
     )
 
@@ -408,18 +408,13 @@ private fun FullLockScreenContent(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Active Mode & Pomodoro Pill
-                val badgeColor = when {
-                    state.sessionMode == SessionMode.STUDY_POMODORO && state.pomodoroPhase != PomodoroPhase.WORK ->
-                        Color(0xFF2E7D32)
-                    state.sessionMode == SessionMode.FOCUS -> Color(0xFF3949AB)
-                    else -> Color(0xFF00897B)
-                }
+                // Grayscale Active Mode Pill
+                val badgeColor = Color(0xFF383838)
 
                 Surface(
-                    color = badgeColor.copy(alpha = 0.25f),
+                    color = badgeColor.copy(alpha = 0.4f),
                     shape = CircleShape,
-                    modifier = Modifier.border(1.dp, badgeColor.copy(alpha = 0.7f), CircleShape)
+                    modifier = Modifier.border(1.dp, Color(0xFF666666), CircleShape)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -427,25 +422,13 @@ private fun FullLockScreenContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = if (state.sessionMode == SessionMode.FOCUS) Icons.Default.Lock else Icons.Default.School,
+                            imageVector = Icons.Default.Lock,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(18.dp)
                         )
-                        val modeText = when (state.sessionMode) {
-                            SessionMode.FOCUS -> "FOCUS REJIMI • ${state.sessionTitle}"
-                            SessionMode.STUDY_TIMER -> "STUDY BO'LIMI • ${state.sessionTitle}"
-                            SessionMode.STUDY_POMODORO -> {
-                                val phaseLabel = when (state.pomodoroPhase) {
-                                    PomodoroPhase.WORK -> "O'QISH (${state.currentRound}/${state.totalRounds})"
-                                    PomodoroPhase.SHORT_BREAK -> "QISQA TANAFFUS (${state.currentRound}/${state.totalRounds})"
-                                    PomodoroPhase.LONG_BREAK -> "KATTA TANAFFUS (${state.currentRound}/${state.totalRounds})"
-                                }
-                                "POMODORO • $phaseLabel"
-                            }
-                        }
                         Text(
-                            text = modeText,
+                            text = "FOCUS REJIMI • ${state.sessionTitle}",
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold
@@ -454,18 +437,13 @@ private fun FullLockScreenContent(
                 }
             }
 
-            // 3. CIRCULAR COUNTDOWN RING
+            // 3. CIRCULAR COUNTDOWN RING (Grayscale)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(250.dp)
             ) {
-                val primaryRingColor = if (state.sessionMode == SessionMode.STUDY_POMODORO &&
-                    state.pomodoroPhase != PomodoroPhase.WORK
-                ) {
-                    Color(0xFF66BB6A)
-                } else {
-                    Color(0xFF7C4DFF)
-                }
+                val primaryRingColor = Color(0xFFE5E5E5)
+                val secondaryRingColor = Color(0xFF888888)
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val strokeWidth = 14.dp.toPx()
@@ -477,7 +455,7 @@ private fun FullLockScreenContent(
                         brush = Brush.sweepGradient(
                             listOf(
                                 primaryRingColor,
-                                Color(0xFF00E5FF),
+                                secondaryRingColor,
                                 primaryRingColor
                             )
                         ),
@@ -509,7 +487,7 @@ private fun FullLockScreenContent(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Status chips showing active protections
+                    // Status chips (Grayscale)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -517,19 +495,19 @@ private fun FullLockScreenContent(
                         Icon(
                             imageVector = Icons.Default.NotificationsOff,
                             contentDescription = null,
-                            tint = Color(0xFFFF8A80),
+                            tint = Color(0xFFCCCCCC),
                             modifier = Modifier.size(16.dp)
                         )
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.VolumeOff,
                             contentDescription = null,
-                            tint = Color(0xFFFF8A80),
+                            tint = Color(0xFFCCCCCC),
                             modifier = Modifier.size(16.dp)
                         )
                         Icon(
                             imageVector = Icons.Default.Security,
                             contentDescription = null,
-                            tint = Color(0xFF80D8FF),
+                            tint = Color(0xFFCCCCCC),
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
@@ -563,7 +541,7 @@ private fun FullLockScreenContent(
                         icon = Icons.Default.Call,
                         label = "Telefon",
                         isActive = false,
-                        accentColor = Color(0xFF4CAF50),
+                        accentColor = Color(0xFFD4D4D4),
                         onClick = onOpenPhone
                     )
 
@@ -571,7 +549,7 @@ private fun FullLockScreenContent(
                         icon = if (state.isTorchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
                         label = if (state.isTorchOn) "Fonor (Yoqiq)" else "Fonor",
                         isActive = state.isTorchOn,
-                        accentColor = Color(0xFFFFD54F),
+                        accentColor = Color(0xFFEFEFEF),
                         onClick = onToggleFlashlight
                     )
 
@@ -579,7 +557,7 @@ private fun FullLockScreenContent(
                         icon = Icons.AutoMirrored.Filled.Message,
                         label = "Xabarlar",
                         isActive = false,
-                        accentColor = Color(0xFF29B6F6),
+                        accentColor = Color(0xFFD4D4D4),
                         onClick = onOpenMessages
                     )
                 }
@@ -615,13 +593,13 @@ private fun FullLockScreenContent(
                         Icon(
                             imageVector = Icons.Default.LockOpen,
                             contentDescription = null,
-                            tint = Color(0xFFFF8A80).copy(alpha = 0.85f),
+                            tint = Color.White.copy(alpha = 0.75f),
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (state.strictMode) "Favqulodda chiqish" else "Yakunlash",
-                            color = Color(0xFFFF8A80).copy(alpha = 0.85f),
+                            color = Color.White.copy(alpha = 0.75f),
                             style = MaterialTheme.typography.labelMedium
                         )
                     }

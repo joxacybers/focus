@@ -3,56 +3,58 @@ package com.example.focus.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = IndigoPrimaryDark,
-    onPrimary = IndigoOnPrimaryDark,
-    primaryContainer = IndigoPrimaryContainerDark,
-    onPrimaryContainer = IndigoOnPrimaryContainerDark,
-    secondary = TealSecondaryDark,
-    onSecondary = TealOnSecondaryDark,
-    secondaryContainer = TealSecondaryContainerDark,
-    onSecondaryContainer = TealOnSecondaryContainerDark,
-    tertiary = VioletTertiaryDark,
-    onTertiary = VioletOnTertiaryDark,
-    tertiaryContainer = VioletTertiaryContainerDark,
-    onTertiaryContainer = VioletOnTertiaryContainerDark
+private val GrayscaleDarkColorScheme = darkColorScheme(
+    primary = GrayPrimaryDark,
+    onPrimary = GrayOnPrimaryDark,
+    primaryContainer = GrayPrimaryContainerDark,
+    onPrimaryContainer = GrayOnPrimaryContainerDark,
+    secondary = GraySecondaryDark,
+    onSecondary = GrayOnSecondaryDark,
+    secondaryContainer = GraySecondaryContainerDark,
+    onSecondaryContainer = GrayOnSecondaryContainerDark,
+    tertiary = GrayTertiaryDark,
+    onTertiary = GrayOnTertiaryDark,
+    tertiaryContainer = GrayTertiaryContainerDark,
+    onTertiaryContainer = GrayOnTertiaryContainerDark,
+    background = GrayBackgroundDark,
+    surface = GraySurfaceDark,
+    surfaceVariant = GraySurfaceVariantDark,
+    onSurface = GrayOnSurfaceDark,
+    onSurfaceVariant = GrayOnSurfaceVariantDark,
+    outline = GrayOutlineDark
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = IndigoPrimaryLight,
-    onPrimary = IndigoOnPrimaryLight,
-    primaryContainer = IndigoPrimaryContainerLight,
-    onPrimaryContainer = IndigoOnPrimaryContainerLight,
-    secondary = TealSecondaryLight,
-    onSecondary = TealOnSecondaryLight,
-    secondaryContainer = TealSecondaryContainerLight,
-    onSecondaryContainer = TealOnSecondaryContainerLight,
-    tertiary = VioletTertiaryLight,
-    onTertiary = VioletOnTertiaryLight,
-    tertiaryContainer = VioletTertiaryContainerLight,
-    onTertiaryContainer = VioletOnTertiaryContainerLight
+private val GrayscaleLightColorScheme = lightColorScheme(
+    primary = GrayPrimaryLight,
+    onPrimary = GrayOnPrimaryLight,
+    primaryContainer = GrayPrimaryContainerLight,
+    onPrimaryContainer = GrayOnPrimaryContainerLight,
+    secondary = GraySecondaryLight,
+    onSecondary = GrayOnSecondaryLight,
+    secondaryContainer = GraySecondaryContainerLight,
+    onSecondaryContainer = GrayOnSecondaryContainerLight,
+    tertiary = GrayTertiaryLight,
+    onTertiary = GrayOnTertiaryLight,
+    tertiaryContainer = GrayTertiaryContainerLight,
+    onTertiaryContainer = GrayOnTertiaryContainerLight,
+    background = GrayBackgroundLight,
+    surface = GraySurfaceLight,
+    surfaceVariant = GraySurfaceVariantLight,
+    onSurface = GrayOnSurfaceLight,
+    onSurfaceVariant = GrayOnSurfaceVariantLight,
+    outline = GrayOutlineLight
 )
 
 @Composable
 fun FocusTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false, // Pure Grayscale by default
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    val colorScheme = if (darkTheme) GrayscaleDarkColorScheme else GrayscaleLightColorScheme
 
     MaterialTheme(
         colorScheme = colorScheme,
