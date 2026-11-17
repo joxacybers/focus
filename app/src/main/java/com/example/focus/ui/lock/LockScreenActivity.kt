@@ -85,8 +85,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -105,6 +108,7 @@ import com.example.focus.data.FocusState
 import com.example.focus.data.PomodoroPhase
 import com.example.focus.data.SessionMode
 import com.example.focus.ui.theme.FocusTheme
+import com.example.focus.ui.theme.PlusJakartaSans
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -304,48 +308,6 @@ private fun FullLockScreenContent(
         }
     }
 
-    // Real-time Signal & Network state (Antenna va Wi-Fi belgisi)
-    var signalLevel by remember { mutableIntStateOf(4) } // 0..4
-    var isWifiConnected by remember { mutableStateOf(false) }
-    var networkLabel by remember { mutableStateOf("LTE") }
-
-    DisposableEffect(context) {
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-
-        fun updateNetworkStatus() {
-            val activeNet = cm?.activeNetwork
-            val caps = if (activeNet != null) cm.getNetworkCapabilities(activeNet) else null
-            isWifiConnected = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            val hasCellular = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-            networkLabel = when {
-                isWifiConnected -> "Wi-Fi"
-                hasCellular -> "Mobile"
-                else -> "SIM"
-            }
-        }
-        updateNetworkStatus()
-
-        val telephonyCallback = object : TelephonyCallback(), TelephonyCallback.SignalStrengthsListener {
-            override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
-                signalLevel = signalStrength.level.coerceIn(0, 4)
-                updateNetworkStatus()
-            }
-        }
-
-        try {
-            tm?.registerTelephonyCallback(context.mainExecutor, telephonyCallback)
-        } catch (_: Exception) {
-        }
-
-        onDispose {
-            try {
-                tm?.unregisterTelephonyCallback(telephonyCallback)
-            } catch (_: Exception) {
-            }
-        }
-    }
-
     var showEmergencyDialog by remember { mutableStateOf(false) }
 
     val progress = remember(state.remainingSeconds, state.totalDurationSeconds) {
@@ -360,9 +322,9 @@ private fun FullLockScreenContent(
 
     val backgroundBrush = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF0D0D0D),
-            Color(0xFF171717),
-            Color(0xFF0D0D0D)
+            Color(0xFF0A0A0E),
+            Color(0xFF14141A),
+            Color(0xFF0A0A0E)
         )
     )
 
@@ -372,37 +334,42 @@ private fun FullLockScreenContent(
             .background(backgroundBrush)
             .padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
+        // Floating Top-Right Battery Badge (Suzuvchi batareya indikatori)
+        FloatingBatteryBadge(
+            batteryPct = batteryPct,
+            isCharging = isCharging,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 4.dp)
+        )
+
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. CUSTOM EMBEDDED LOCK SCREEN STATUS BAR (Soat, Antenna, Zaryad belgisi)
-            CustomLockStatusBar(
-                timeText = currentTimeText,
-                signalLevel = signalLevel,
-                isWifiConnected = isWifiConnected,
-                networkLabel = networkLabel,
-                batteryPct = batteryPct,
-                isCharging = isCharging
-            )
-
-            // 2. LARGE CLOCK & MODE STATUS HEADER
+            // 1. LARGE CLOCK & MODE STATUS HEADER
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = currentTimeText,
                     style = MaterialTheme.typography.displayLarge.copy(
-                        fontSize = 68.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontSize = 72.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
+                        letterSpacing = (-1).sp
                     ),
                     color = Color.White
                 )
                 Text(
                     text = currentDateText,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Medium
+                    ),
                     color = Color.White.copy(alpha = 0.72f)
                 )
 
@@ -429,59 +396,45 @@ private fun FullLockScreenContent(
                         )
                         Text(
                             text = "FOCUSLOCK REJIMI • ${state.sessionTitle}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color.White
                         )
                     }
                 }
             }
 
-            // 3. CIRCULAR COUNTDOWN RING (Grayscale)
+            // 2. CIRCULAR COUNTDOWN RING (Google Material 3 Expressive)
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(250.dp)
+                modifier = Modifier.size(260.dp)
             ) {
-                val primaryRingColor = Color(0xFFE5E5E5)
-                val secondaryRingColor = Color(0xFF888888)
-
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeWidth = 14.dp.toPx()
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.1f),
-                        style = Stroke(width = strokeWidth)
-                    )
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            listOf(
-                                primaryRingColor,
-                                secondaryRingColor,
-                                primaryRingColor
-                            )
-                        ),
-                        startAngle = -90f,
-                        sweepAngle = 360f * animatedProgress,
-                        useCenter = false,
-                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                    )
-                }
+                GoogleExpressiveCountdownProgress(
+                    progress = animatedProgress
+                )
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "QOLGAN VAQT",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.SemiBold
+                        ),
                         color = Color.White.copy(alpha = 0.6f),
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 2.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = formatDuration(state.remainingSeconds),
                         style = MaterialTheme.typography.displayMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 44.sp
+                            fontSize = 46.sp,
+                            letterSpacing = 1.sp
                         ),
                         color = Color.White
                     )
@@ -512,14 +465,16 @@ private fun FullLockScreenContent(
                         )
                         Text(
                             text = "To'liq himoya faol",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = PlusJakartaSans
+                            ),
                             color = Color.White.copy(alpha = 0.75f)
                         )
                     }
                 }
             }
 
-            // 4. ONLY ALLOWED APPS / TOOLS (Telefon, Fonor, Xabarlar)
+            // 3. ONLY ALLOWED APPS / TOOLS (Telefon, Fonor, Xabarlar)
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -621,134 +576,134 @@ private fun FullLockScreenContent(
 }
 
 /**
- * Custom status bar rendered inside the Lock Screen so that even when the system status bar
- * and Control Panel are completely blocked/hidden, the user can still see:
- * - Current Clock (Soat)
- * - Antenna / Signal Bars & Wi-Fi indicator
- * - Battery Percentage & Charging Icon (Zaryad belgisi)
+ * Google Material 3 Expressive Circular Progress Countdown Ring
+ * Incorporates rounded caps, signature track gap, and subtle ambient wavy orbit from M3 Expressive design
  */
 @Composable
-private fun CustomLockStatusBar(
-    timeText: String,
-    signalLevel: Int,
-    isWifiConnected: Boolean,
-    networkLabel: String,
-    batteryPct: Int,
-    isCharging: Boolean
+private fun GoogleExpressiveCountdownProgress(
+    progress: Float,
+    modifier: Modifier = Modifier
 ) {
-    Surface(
-        color = Color.White.copy(alpha = 0.08f),
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left: Time & Lock indicator
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = null,
-                    tint = Color(0xFF80D8FF),
-                    modifier = Modifier.size(15.dp)
-                )
-                Text(
-                    text = timeText,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val strokeWidth = 14.dp.toPx()
+        val diameter = size.minDimension - strokeWidth - 18.dp.toPx()
+        val radius = diameter / 2f
+        val centerOffset = Offset(size.width / 2f, size.height / 2f)
+        val arcTopLeft = Offset(centerOffset.x - radius, centerOffset.y - radius)
+        val arcSize = Size(diameter, diameter)
+
+        // 1. Outer Google M3 Expressive Decorative Wavy Orbit Ring
+        val wavyRadius = radius + 11.dp.toPx()
+        val waveAmplitude = 2.4.dp.toPx()
+        val waveCount = 20
+        val wavyPath = Path()
+        val step = 2.0
+        var angle = 0.0
+        while (angle <= 360.0) {
+            val rad = Math.toRadians(angle)
+            val currentR = wavyRadius + waveAmplitude * Math.sin(waveCount * rad).toFloat()
+            val x = centerOffset.x + (currentR * Math.cos(rad)).toFloat()
+            val y = centerOffset.y + (currentR * Math.sin(rad)).toFloat()
+            if (angle == 0.0) {
+                wavyPath.moveTo(x, y)
+            } else {
+                wavyPath.lineTo(x, y)
+            }
+            angle += step
+        }
+        wavyPath.close()
+        drawPath(
+            path = wavyPath,
+            color = Color.White.copy(alpha = 0.08f),
+            style = Stroke(width = 1.4.dp.toPx())
+        )
+
+        // 2. Google M3 Track: Semi-translucent with rounded stroke
+        drawArc(
+            color = Color.White.copy(alpha = 0.12f),
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = arcTopLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+
+        // 3. Google M3 Expressive Active Indicator with rounded caps & smooth highlight
+        if (progress > 0.005f) {
+            val sweep = (360f * progress).coerceIn(1f, 360f)
+            drawArc(
+                brush = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0xFFFFFFFF),
+                        Color(0xFFE2E2E8),
+                        Color(0xFFFFFFFF)
                     ),
-                    color = Color.White
-                )
-                Text(
-                    text = "• FocusLock",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.65f)
-                )
-            }
+                    center = centerOffset
+                ),
+                startAngle = -90f,
+                sweepAngle = sweep,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
 
-            // Right: Antenna (Signal bars + Wi-Fi/Network) & Battery (Zaryad belgisi)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Network / Antenna indicator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (isWifiConnected) {
-                        Icon(
-                            imageVector = Icons.Default.Wifi,
-                            contentDescription = "Wi-Fi",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    SignalBarsIndicator(level = signalLevel)
-                    Text(
-                        text = networkLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-                }
-
-                // Battery indicator
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    val batteryColor = when {
-                        isCharging -> Color(0xFF69F0AE)
-                        batteryPct <= 15 -> Color(0xFFFF5252)
-                        else -> Color.White
-                    }
-                    Icon(
-                        imageVector = when {
-                            isCharging -> Icons.Default.BatteryChargingFull
-                            batteryPct >= 80 -> Icons.Default.BatteryFull
-                            else -> Icons.Default.BatteryStd
-                        },
-                        contentDescription = "Zaryad",
-                        tint = batteryColor,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Text(
-                        text = "$batteryPct%",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = batteryColor
-                    )
-                }
-            }
+            // Distinctive Google M3 accent tip circle at active cap
+            val endAngleRad = Math.toRadians((-90.0 + sweep).toDouble())
+            val tipX = centerOffset.x + (radius * Math.cos(endAngleRad)).toFloat()
+            val tipY = centerOffset.y + (radius * Math.sin(endAngleRad)).toFloat()
+            drawCircle(
+                color = Color.White,
+                radius = strokeWidth * 0.44f,
+                center = Offset(tipX, tipY)
+            )
         }
     }
 }
 
+/**
+ * Floating glass battery badge in top right corner
+ */
 @Composable
-private fun SignalBarsIndicator(level: Int) {
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.height(14.dp)
+private fun FloatingBatteryBadge(
+    batteryPct: Int,
+    isCharging: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val batteryColor = when {
+        isCharging -> Color(0xFF69F0AE)
+        batteryPct <= 15 -> Color(0xFFFF5252)
+        else -> Color.White
+    }
+
+    Surface(
+        color = Color.White.copy(alpha = 0.09f),
+        shape = CircleShape,
+        modifier = modifier.border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
     ) {
-        for (bar in 1..4) {
-            val active = bar <= level.coerceIn(1, 4)
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .height((3 + bar * 2.5f).dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(if (active) Color.White else Color.White.copy(alpha = 0.28f))
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = when {
+                    isCharging -> Icons.Default.BatteryChargingFull
+                    batteryPct >= 80 -> Icons.Default.BatteryFull
+                    else -> Icons.Default.BatteryStd
+                },
+                contentDescription = "Zaryad",
+                tint = batteryColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = "$batteryPct%",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = batteryColor
             )
         }
     }
