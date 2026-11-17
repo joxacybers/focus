@@ -1,6 +1,5 @@
 package com.example.focus.ui.lock
 
-import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -221,19 +220,7 @@ class LockScreenActivity : ComponentActivity() {
                             Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     )
                 }
-                val bundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    try {
-                        ActivityOptions.makeBasic().apply {
-                            setPendingIntentBackgroundActivityStartMode(
-                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                            )
-                        }.toBundle()
-                    } catch (_: Throwable) {
-                        null
-                    }
-                } else null
-
-                context.startActivity(intent, bundle)
+                context.startActivity(intent)
             } catch (_: Exception) {
             }
         }

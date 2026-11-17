@@ -1,6 +1,5 @@
 package com.example.focus.service
 
-import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -241,24 +240,11 @@ class FocusForegroundService : Service() {
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             )
         }
-        val bundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            try {
-                ActivityOptions.makeBasic().apply {
-                    setPendingIntentBackgroundActivityStartMode(
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                    )
-                }.toBundle()
-            } catch (_: Throwable) {
-                null
-            }
-        } else null
-
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             lockIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            bundle
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val title: String
