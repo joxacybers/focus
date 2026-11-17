@@ -60,7 +60,9 @@ class FocusForegroundService : Service() {
             else -> {
                 startForeground(NOTIFICATION_ID, buildNotification())
                 updateTopStatusBarBlocker()
-                LockScreenActivity.launch(this)
+                if (FocusRepository.state.value.isLocked) {
+                    LockScreenActivity.launch(this)
+                }
                 startTicker()
             }
         }
@@ -71,20 +73,24 @@ class FocusForegroundService : Service() {
         tickerJob?.cancel()
         tickerJob = serviceScope.launch {
             while (isActive) {
+                FocusRepository.checkAndApplySchedules(this@FocusForegroundService)
                 val state = FocusRepository.state.value
-                if (!state.isLocked) {
-                    FocusRepository.checkAndApplySchedules(this@FocusForegroundService)
+
+                if (state.isLocked) {
+                    FocusRepository.onTimerTick(this@FocusForegroundService)
+                    updateTopStatusBarBlocker()
+                    enforceForegroundLockIfNeeded()
+                } else {
                     removeTopStatusBarBlocker()
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    break
+                    val hasActiveSchedules = state.schedules.any { it.enabled && it.daysOfWeek.isNotEmpty() }
+                    if (!hasActiveSchedules) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                        break
+                    }
                 }
 
-                FocusRepository.onTimerTick(this@FocusForegroundService)
                 updateNotification()
-                updateTopStatusBarBlocker()
-                enforceForegroundLockIfNeeded()
-
                 delay(1_000L)
             }
         }
@@ -190,9 +196,12 @@ class FocusForegroundService : Service() {
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "FocusLock Faol Sessiya",
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // High priority channel for active lock session & full-screen alarm
+        val lockChannel = NotificationChannel(
+            CHANNEL_ID_LOCK,
+            "FocusLock Faol Qulf",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "FocusLock faol bo'lganda ekran qulfi va qolgan vaqtni ko'rsatadi"
@@ -200,8 +209,18 @@ class FocusForegroundService : Service() {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setBypassDnd(true)
         }
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(channel)
+        nm.createNotificationChannel(lockChannel)
+
+        // Low priority silent channel for standby guardian mode
+        val standbyChannel = NotificationChannel(
+            CHANNEL_ID_STANDBY,
+            "FocusLock Fon Himoyasi",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Keyingi rejalashtirilgan intervalni kutish holati"
+            setShowBadge(false)
+        }
+        nm.createNotificationChannel(standbyChannel)
     }
 
     private fun updateNotification() {
@@ -211,11 +230,10 @@ class FocusForegroundService : Service() {
 
     private fun buildNotification(): Notification {
         val state = FocusRepository.state.value
-        val mins = state.remainingSeconds / 60
-        val secs = state.remainingSeconds % 60
-        val timeFormatted = String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
+        val isLocked = state.isLocked
+        val channelId = if (isLocked) CHANNEL_ID_LOCK else CHANNEL_ID_STANDBY
 
-        val lockIntent = Intent(this, LockScreenActivity::class.java).apply {
+        val lockIntent = Intent(this, if (isLocked) LockScreenActivity::class.java else com.example.focus.MainActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -243,29 +261,49 @@ class FocusForegroundService : Service() {
             bundle
         )
 
-        val subtitle = when (state.sessionMode) {
-            SessionMode.FOCUS -> "Qolgan vaqt: $timeFormatted • Faqat ruxsat etilgan vositalar"
-            SessionMode.STUDY_TIMER -> "O'qish vaqti: $timeFormatted • Bildirishnomalar o'chirilgan"
-            SessionMode.STUDY_POMODORO -> "Pomodoro ${state.currentRound}/${state.totalRounds} • Qolgan vaqt: $timeFormatted"
+        val title: String
+        val subtitle: String
+        if (isLocked) {
+            val mins = state.remainingSeconds / 60
+            val secs = state.remainingSeconds % 60
+            val timeFormatted = String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
+            title = state.sessionTitle
+            subtitle = when (state.sessionMode) {
+                SessionMode.FOCUS -> "Qolgan vaqt: $timeFormatted • Faqat telefon va SMS"
+                SessionMode.STUDY_TIMER -> "O'qish vaqti: $timeFormatted • Bildirishnomalar o'chirilgan"
+                SessionMode.STUDY_POMODORO -> "Pomodoro ${state.currentRound}/${state.totalRounds} • Qolgan vaqt: $timeFormatted"
+            }
+        } else {
+            title = "FocusLock himoyada"
+            val next = FocusRepository.getNextScheduleTimeText()
+            subtitle = if (next.isNotBlank()) "Keyingi reja: $next" else "Rejalashtirilgan intervallar kutilmoqda"
         }
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .setContentTitle(state.sessionTitle)
+            .setContentTitle(title)
             .setContentText(subtitle)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true)
-            .build()
+
+        if (isLocked) {
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setFullScreenIntent(pendingIntent, true)
+        } else {
+            builder.setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        }
+
+        return builder.build()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         val state = FocusRepository.state.value
-        if (state.isLocked) {
+        val hasActiveSchedules = state.schedules.any { it.enabled && it.daysOfWeek.isNotEmpty() }
+        if (state.isLocked || hasActiveSchedules) {
             val restartIntent = Intent(applicationContext, FocusForegroundService::class.java).apply {
                 action = ACTION_START
             }
@@ -274,7 +312,9 @@ class FocusForegroundService : Service() {
             } else {
                 applicationContext.startService(restartIntent)
             }
-            LockScreenActivity.launch(applicationContext)
+            if (state.isLocked) {
+                LockScreenActivity.launch(applicationContext)
+            }
         }
     }
 
@@ -287,7 +327,8 @@ class FocusForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val CHANNEL_ID = "focus_lock_session_channel_v2"
+        private const val CHANNEL_ID_LOCK = "focus_lock_session_channel_v2"
+        private const val CHANNEL_ID_STANDBY = "focus_standby_channel_v1"
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_START = "com.example.focus.action.START_SESSION"
         private const val ACTION_STOP = "com.example.focus.action.STOP_SESSION"

@@ -5,6 +5,7 @@ import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -17,6 +18,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.Process
+import android.os.SystemClock
 import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
@@ -101,6 +103,10 @@ object FocusRepository {
     private var previousInterruptionFilter: Int = NotificationManager.INTERRUPTION_FILTER_ALL
     private var previousRingerMode: Int = AudioManager.RINGER_MODE_NORMAL
 
+    // Monotonic elapsed realtime anti-cheat tracking (cannot be bypassed by changing system date/time)
+    private var sessionStartElapsedRealtime: Long = 0L
+    private var sessionDurationMillis: Long = 0L
+
     private val _state = MutableStateFlow(FocusState())
     val state: StateFlow<FocusState> = _state.asStateFlow()
 
@@ -124,6 +130,7 @@ object FocusRepository {
         }
         rescheduleAlarms(appContext)
         checkAndApplySchedules(appContext)
+        FocusForegroundService.start(appContext)
     }
 
     private fun setupCameraTorch(context: Context) {
@@ -184,6 +191,8 @@ object FocusRepository {
         val savedEndTime = prefs.getLong("active_end_time", 0L)
         val now = System.currentTimeMillis()
         val stillActive = savedEndTime > now
+        sessionStartElapsedRealtime = prefs.getLong("session_start_elapsed", 0L)
+        sessionDurationMillis = prefs.getLong("session_duration_millis", 0L)
 
         _state.update { current ->
             current.copy(
@@ -501,6 +510,7 @@ object FocusRepository {
         saveSchedules(updated)
         val ctx = context ?: applicationContext
         if (ctx != null) {
+            FocusForegroundService.start(ctx)
             rescheduleAlarms(ctx)
             checkAndApplySchedules(ctx)
         }
@@ -514,6 +524,7 @@ object FocusRepository {
         saveSchedules(updated)
         val ctx = context ?: applicationContext
         if (ctx != null) {
+            FocusForegroundService.start(ctx)
             rescheduleAlarms(ctx)
             checkAndApplySchedules(ctx)
         }
@@ -525,6 +536,7 @@ object FocusRepository {
         saveSchedules(updated)
         val ctx = context ?: applicationContext
         if (ctx != null) {
+            FocusForegroundService.start(ctx)
             rescheduleAlarms(ctx)
         }
     }
@@ -536,11 +548,16 @@ object FocusRepository {
         mode: SessionMode = SessionMode.FOCUS
     ) {
         val totalSeconds = (durationMinutes.coerceAtLeast(1) * 60L)
-        val endTime = System.currentTimeMillis() + totalSeconds * 1000L
+        val now = System.currentTimeMillis()
+        val endTime = now + totalSeconds * 1000L
+        sessionStartElapsedRealtime = SystemClock.elapsedRealtime()
+        sessionDurationMillis = totalSeconds * 1000L
 
         prefs.edit()
             .putLong("active_end_time", endTime)
             .putLong("active_total_seconds", totalSeconds)
+            .putLong("session_start_elapsed", sessionStartElapsedRealtime)
+            .putLong("session_duration_millis", sessionDurationMillis)
             .putString("active_title", title)
             .putString("active_mode", mode.name)
             .apply()
@@ -613,8 +630,17 @@ object FocusRepository {
         val current = _state.value
         if (!current.isLocked) return
 
-        val now = System.currentTimeMillis()
-        val remaining = ((current.endTimeEpochMillis - now) / 1000L).coerceAtLeast(0L)
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val elapsedSinceStart = (nowElapsed - sessionStartElapsedRealtime).coerceAtLeast(0L)
+        val remainingByElapsed = ((sessionDurationMillis - elapsedSinceStart) / 1000L).coerceAtLeast(0L)
+
+        // Monotonic check: if elapsedRealtime tracking is valid, use it to prevent system time change cheat
+        val remaining = if (sessionDurationMillis > 0L && sessionStartElapsedRealtime > 0L) {
+            remainingByElapsed
+        } else {
+            val now = System.currentTimeMillis()
+            ((current.endTimeEpochMillis - now) / 1000L).coerceAtLeast(0L)
+        }
 
         // Expire temporary allowed package window after 3 minutes of inactivity or check in service
         if (remaining > 0L) {
@@ -1010,6 +1036,76 @@ object FocusRepository {
                 }
                 context.startActivity(intent)
             } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun isDeviceAdminActive(context: Context): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return false
+        val cn = ComponentName(context, com.example.focus.receiver.FocusDeviceAdminReceiver::class.java)
+        return dpm.isAdminActive(cn)
+    }
+
+    fun requestDeviceAdmin(context: Context) {
+        val cn = ComponentName(context, com.example.focus.receiver.FocusDeviceAdminReceiver::class.java)
+        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, cn)
+            putExtra(
+                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "FocusLock qat'iy rejimida bloklash vaqtida ilovani o'chirib yuborishning oldini olish uchun Qurilma Administratori huquqini bering."
+            )
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+
+    fun getNextScheduleTimeText(): String {
+        val schedules = _state.value.schedules.filter { it.enabled && it.daysOfWeek.isNotEmpty() }
+        if (schedules.isEmpty()) return ""
+
+        val now = Calendar.getInstance()
+        val nowTime = System.currentTimeMillis()
+
+        var earliestCandidate: Long? = null
+        var earliestSchedule: FocusSchedule? = null
+
+        for (schedule in schedules) {
+            for (offsetDays in 0..7) {
+                val cal = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, offsetDays)
+                }
+                val isoDay = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+                if (isoDay in schedule.daysOfWeek) {
+                    val startCal = Calendar.getInstance().apply {
+                        timeInMillis = cal.timeInMillis
+                        set(Calendar.HOUR_OF_DAY, schedule.startHour)
+                        set(Calendar.MINUTE, schedule.startMinute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    if (startCal.timeInMillis > nowTime) {
+                        if (earliestCandidate == null || startCal.timeInMillis < earliestCandidate) {
+                            earliestCandidate = startCal.timeInMillis
+                            earliestSchedule = schedule
+                        }
+                    }
+                }
+            }
+        }
+
+        val cand = earliestCandidate ?: return ""
+        val candCal = Calendar.getInstance().apply { timeInMillis = cand }
+        val isToday = candCal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+        val isTomorrow = candCal.get(Calendar.DAY_OF_YEAR) == (now.get(Calendar.DAY_OF_YEAR) + 1)
+        val timeStr = String.format(java.util.Locale.getDefault(), "%02d:%02d", candCal.get(Calendar.HOUR_OF_DAY), candCal.get(Calendar.MINUTE))
+
+        return when {
+            isToday -> "Bugun $timeStr (${earliestSchedule?.title ?: ""})"
+            isTomorrow -> "Ertaga $timeStr (${earliestSchedule?.title ?: ""})"
+            else -> {
+                val dayNames = listOf("Du", "Se", "Chor", "Pay", "Juma", "Shan", "Yak")
+                val isoDay = ((candCal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+                "${dayNames.getOrElse(isoDay - 1) { "" }} $timeStr"
             }
         }
     }

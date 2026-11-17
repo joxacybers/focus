@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -152,23 +153,7 @@ class LockScreenActivity : ComponentActivity() {
             // Automatically close LockScreenActivity when session finishes
             LaunchedEffect(state.isLocked) {
                 if (!state.isLocked) {
-                    if (FocusRepository.isInLockTaskMode(this@LockScreenActivity)) {
-                        try {
-                            stopLockTask()
-                        } catch (_: Exception) {
-                        }
-                    }
                     finish()
-                }
-            }
-
-            // Optionally activate Screen Pinning (Lock Task Mode) if enabled in settings
-            LaunchedEffect(state.useScreenPinning, state.isLocked) {
-                if (state.isLocked && state.useScreenPinning && !FocusRepository.isInLockTaskMode(this@LockScreenActivity)) {
-                    try {
-                        startLockTask()
-                    } catch (_: Exception) {
-                    }
                 }
             }
 
@@ -187,23 +172,7 @@ class LockScreenActivity : ComponentActivity() {
                     onOpenMessages = {
                         FocusRepository.launchMessagesApp(this@LockScreenActivity)
                     },
-                    onToggleScreenPinning = {
-                        try {
-                            if (FocusRepository.isInLockTaskMode(this@LockScreenActivity)) {
-                                stopLockTask()
-                            } else {
-                                startLockTask()
-                            }
-                        } catch (_: Exception) {
-                        }
-                    },
                     onEmergencyStop = {
-                        if (FocusRepository.isInLockTaskMode(this@LockScreenActivity)) {
-                            try {
-                                stopLockTask()
-                            } catch (_: Exception) {
-                            }
-                        }
                         FocusRepository.stopSession(this@LockScreenActivity, completed = false)
                         finish()
                     }
@@ -277,7 +246,6 @@ private fun FullLockScreenContent(
     onOpenPhone: () -> Unit,
     onToggleFlashlight: () -> Unit,
     onOpenMessages: () -> Unit,
-    onToggleScreenPinning: () -> Unit,
     onEmergencyStop: () -> Unit
 ) {
     val context = LocalContext.current
@@ -410,7 +378,7 @@ private fun FullLockScreenContent(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "FOCUSLOCK REJIMI • ${state.sessionTitle}",
+                            text = state.sessionTitle,
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.SemiBold
@@ -421,72 +389,39 @@ private fun FullLockScreenContent(
                 }
             }
 
-            // 2. CIRCULAR COUNTDOWN RING (Google Material 3 Expressive)
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(260.dp)
+            // 2. COUNTDOWN & GOOGLE M3 EXPRESSIVE LINEAR PROGRESS BAR
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                GoogleExpressiveCountdownProgress(
+                Text(
+                    text = "QOLGAN VAQT",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = Color.White.copy(alpha = 0.6f),
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = formatDuration(state.remainingSeconds),
+                    style = MaterialTheme.typography.displayMedium.copy(
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 58.sp,
+                        letterSpacing = 1.sp
+                    ),
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Google M3 Expressive Linear Progress Bar
+                GoogleExpressiveLinearProgress(
                     progress = animatedProgress
                 )
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "QOLGAN VAQT",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = Color.White.copy(alpha = 0.6f),
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = formatDuration(state.remainingSeconds),
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 46.sp,
-                            letterSpacing = 1.sp
-                        ),
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Status chips (Grayscale)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.NotificationsOff,
-                            contentDescription = null,
-                            tint = Color(0xFFCCCCCC),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.VolumeOff,
-                            contentDescription = null,
-                            tint = Color(0xFFCCCCCC),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = null,
-                            tint = Color(0xFFCCCCCC),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "To'liq himoya faol",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = PlusJakartaSans
-                            ),
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                    }
-                }
             }
 
             // 3. ONLY ALLOWED APPS / TOOLS (Telefon, Fonor, Xabarlar)
@@ -494,14 +429,6 @@ private fun FullLockScreenContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "RUXSAT ETILGAN VOSITALAR",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.6f),
-                    letterSpacing = 1.4.sp
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -517,7 +444,7 @@ private fun FullLockScreenContent(
 
                     AllowedQuickActionButton(
                         icon = if (state.isTorchOn) Icons.Default.FlashlightOn else Icons.Default.FlashlightOff,
-                        label = if (state.isTorchOn) "Fonor (Yoqiq)" else "Fonor",
+                        label = "Fonor",
                         isActive = state.isTorchOn,
                         accentColor = Color(0xFFEFEFEF),
                         onClick = onToggleFlashlight
@@ -532,31 +459,14 @@ private fun FullLockScreenContent(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Bottom row: Screen Pinning helper & Emergency Unlock
+                // Bottom row: Emergency Unlock only (no Screen Pinning)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
-                        onClick = onToggleScreenPinning
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.65f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Ekranni mixlash",
-                            color = Color.White.copy(alpha = 0.65f),
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    }
-
                     TextButton(
                         onClick = { showEmergencyDialog = true }
                     ) {
@@ -591,89 +501,37 @@ private fun FullLockScreenContent(
 }
 
 /**
- * Google Material 3 Expressive Circular Progress Countdown Ring
- * Incorporates rounded caps, signature track gap, and subtle ambient wavy orbit from M3 Expressive design
+ * Google Material 3 Expressive Linear Progress Bar (from image 3rd style)
+ * Sleek horizontal bar with rounded caps and gradient indicator
  */
 @Composable
-private fun GoogleExpressiveCountdownProgress(
+private fun GoogleExpressiveLinearProgress(
     progress: Float,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val strokeWidth = 14.dp.toPx()
-        val diameter = size.minDimension - strokeWidth - 18.dp.toPx()
-        val radius = diameter / 2f
-        val centerOffset = Offset(size.width / 2f, size.height / 2f)
-        val arcTopLeft = Offset(centerOffset.x - radius, centerOffset.y - radius)
-        val arcSize = Size(diameter, diameter)
-
-        // 1. Outer Google M3 Expressive Decorative Wavy Orbit Ring
-        val wavyRadius = radius + 11.dp.toPx()
-        val waveAmplitude = 2.4.dp.toPx()
-        val waveCount = 20
-        val wavyPath = Path()
-        val step = 2.0
-        var angle = 0.0
-        while (angle <= 360.0) {
-            val rad = Math.toRadians(angle)
-            val currentR = wavyRadius + waveAmplitude * Math.sin(waveCount * rad).toFloat()
-            val x = centerOffset.x + (currentR * Math.cos(rad)).toFloat()
-            val y = centerOffset.y + (currentR * Math.sin(rad)).toFloat()
-            if (angle == 0.0) {
-                wavyPath.moveTo(x, y)
-            } else {
-                wavyPath.lineTo(x, y)
-            }
-            angle += step
-        }
-        wavyPath.close()
-        drawPath(
-            path = wavyPath,
-            color = Color.White.copy(alpha = 0.08f),
-            style = Stroke(width = 1.4.dp.toPx())
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.16f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(clampedProgress)
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFFE2E2E8),
+                            Color(0xFFFFFFFF),
+                            Color(0xFFD0D0D8)
+                        )
+                    )
+                )
         )
-
-        // 2. Google M3 Track: Semi-translucent with rounded stroke
-        drawArc(
-            color = Color.White.copy(alpha = 0.12f),
-            startAngle = 0f,
-            sweepAngle = 360f,
-            useCenter = false,
-            topLeft = arcTopLeft,
-            size = arcSize,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-
-        // 3. Google M3 Expressive Active Indicator with rounded caps & smooth highlight
-        if (progress > 0.005f) {
-            val sweep = (360f * progress).coerceIn(1f, 360f)
-            drawArc(
-                brush = Brush.sweepGradient(
-                    colors = listOf(
-                        Color(0xFFFFFFFF),
-                        Color(0xFFE2E2E8),
-                        Color(0xFFFFFFFF)
-                    ),
-                    center = centerOffset
-                ),
-                startAngle = -90f,
-                sweepAngle = sweep,
-                useCenter = false,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-            )
-
-            // Distinctive Google M3 accent tip circle at active cap
-            val endAngleRad = Math.toRadians((-90.0 + sweep).toDouble())
-            val tipX = centerOffset.x + (radius * Math.cos(endAngleRad)).toFloat()
-            val tipY = centerOffset.y + (radius * Math.sin(endAngleRad)).toFloat()
-            drawCircle(
-                color = Color.White,
-                radius = strokeWidth * 0.44f,
-                center = Offset(tipX, tipY)
-            )
-        }
     }
 }
 
@@ -759,13 +617,13 @@ private fun AllowedQuickActionButton(
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(68.dp)
+                .size(54.dp)
                 .scale(if (isActive) pulseScale else 1f)
                 .clip(CircleShape)
                 .background(bgColor)
                 .border(
-                    width = 1.5.dp,
-                    color = if (isActive) accentColor else accentColor.copy(alpha = 0.5f),
+                    width = 1.dp,
+                    color = if (isActive) accentColor else accentColor.copy(alpha = 0.4f),
                     shape = CircleShape
                 )
         ) {
@@ -773,13 +631,13 @@ private fun AllowedQuickActionButton(
                 imageVector = icon,
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(30.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = if (isActive) accentColor else Color.White.copy(alpha = 0.9f),
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
         )

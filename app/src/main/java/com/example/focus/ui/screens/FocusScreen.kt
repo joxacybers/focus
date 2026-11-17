@@ -135,6 +135,7 @@ fun FocusScreen(
     val hasUsageStats = remember(permissionTrigger) { FocusRepository.hasUsageStatsPermission(context) }
     val hasBatteryOptimization = remember(permissionTrigger) { FocusRepository.isIgnoringBatteryOptimizations(context) }
     val hasExactAlarm = remember(permissionTrigger) { FocusRepository.canScheduleExactAlarms(context) }
+    val hasDeviceAdmin = remember(permissionTrigger) { FocusRepository.isDeviceAdminActive(context) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -415,6 +416,7 @@ fun FocusScreen(
             hasUsageStats = hasUsageStats,
             hasBatteryOptimization = hasBatteryOptimization,
             hasExactAlarm = hasExactAlarm,
+            hasDeviceAdmin = hasDeviceAdmin,
             onDismiss = { showSettingsSheet = false }
         )
     }
@@ -548,6 +550,7 @@ private fun FocusSettingsBottomSheet(
     hasUsageStats: Boolean,
     hasBatteryOptimization: Boolean,
     hasExactAlarm: Boolean,
+    hasDeviceAdmin: Boolean,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -813,6 +816,14 @@ private fun FocusSettingsBottomSheet(
                         subtitle = "Vaqt intervallari kechikmasdan o'z vaqtida qulflanishi uchun",
                         isGranted = hasExactAlarm,
                         onClick = { FocusRepository.requestExactAlarmPermission(context) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.Security,
+                        title = "Qurilma administratori (Anti-Uninstall)",
+                        subtitle = "Bloklangan vaqtda ilovani o'chirishni (Uninstall) taqiqlaydi",
+                        isGranted = hasDeviceAdmin,
+                        onClick = { FocusRepository.requestDeviceAdmin(context) }
                     )
                 }
             }

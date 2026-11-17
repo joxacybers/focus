@@ -38,6 +38,7 @@ class FocusScheduleReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 FocusRepository.init(context)
+                com.example.focus.service.FocusForegroundService.start(context)
                 FocusRepository.checkAndApplySchedules(context)
                 FocusRepository.rescheduleAlarms(context)
             } finally {
