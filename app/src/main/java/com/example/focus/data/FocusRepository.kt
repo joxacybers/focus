@@ -516,6 +516,20 @@ object FocusRepository {
         }
     }
 
+    fun updateSchedule(schedule: FocusSchedule, context: Context? = null) {
+        val updated = _state.value.schedules.map {
+            if (it.id == schedule.id) schedule else it
+        }
+        _state.update { it.copy(schedules = updated) }
+        saveSchedules(updated)
+        val ctx = context ?: applicationContext
+        if (ctx != null) {
+            FocusForegroundService.start(ctx)
+            rescheduleAlarms(ctx)
+            checkAndApplySchedules(ctx)
+        }
+    }
+
     fun toggleSchedule(id: String, enabled: Boolean, context: Context? = null) {
         val updated = _state.value.schedules.map {
             if (it.id == id) it.copy(enabled = enabled) else it
@@ -827,7 +841,7 @@ object FocusRepository {
                     previousInterruptionFilter = nm.currentInterruptionFilter
                     nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS)
                 } else {
-                    nm.setInterruptionFilter(previousInterruptionFilter)
+                    nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
                 }
             }
         } catch (_: Exception) {
@@ -839,7 +853,12 @@ object FocusRepository {
                     previousRingerMode = am.ringerMode
                     am.ringerMode = AudioManager.RINGER_MODE_SILENT
                 } else {
-                    am.ringerMode = previousRingerMode
+                    val restoreMode = if (previousRingerMode != AudioManager.RINGER_MODE_SILENT) {
+                        previousRingerMode
+                    } else {
+                        AudioManager.RINGER_MODE_NORMAL
+                    }
+                    am.ringerMode = restoreMode
                 }
             }
         } catch (_: Exception) {

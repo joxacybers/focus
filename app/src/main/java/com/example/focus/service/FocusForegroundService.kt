@@ -197,16 +197,15 @@ class FocusForegroundService : Service() {
     private fun createNotificationChannel() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // High priority channel for active lock session & full-screen alarm
+        // Standard priority channel for active lock session & ongoing notification
         val lockChannel = NotificationChannel(
             CHANNEL_ID_LOCK,
             "FocusLock Faol Qulf",
-            NotificationManager.IMPORTANCE_HIGH
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "FocusLock faol bo'lganda ekran qulfi va qolgan vaqtni ko'rsatadi"
-            setShowBadge(true)
+            description = "FocusLock faol bo'lganda holat va qolgan vaqtni ko'rsatadi"
+            setShowBadge(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setBypassDnd(true)
         }
         nm.createNotificationChannel(lockChannel)
 
@@ -273,10 +272,9 @@ class FocusForegroundService : Service() {
             .setContentIntent(pendingIntent)
 
         if (isLocked) {
-            builder.setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+            builder.setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setFullScreenIntent(pendingIntent, true)
         } else {
             builder.setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_SERVICE)

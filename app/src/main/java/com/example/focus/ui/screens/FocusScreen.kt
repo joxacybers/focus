@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
@@ -113,6 +114,7 @@ fun FocusScreen(
 ) {
     val context = LocalContext.current
     var showAddScheduleDialog by remember { mutableStateOf(false) }
+    var editingSchedule by remember { mutableStateOf<FocusSchedule?>(null) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
     // Recheck permissions on resume
@@ -372,6 +374,7 @@ fun FocusScreen(
                     CompactScheduleItemRow(
                         schedule = schedule,
                         onToggle = { enabled -> FocusRepository.toggleSchedule(schedule.id, enabled) },
+                        onEdit = { editingSchedule = schedule },
                         onStartNow = {
                             val startTotal = schedule.startHour * 60 + schedule.startMinute
                             val endTotal = schedule.endHour * 60 + schedule.endMinute
@@ -398,10 +401,22 @@ fun FocusScreen(
 
     if (showAddScheduleDialog) {
         EnhancedScheduleDialog(
+            initialSchedule = null,
             onDismiss = { showAddScheduleDialog = false },
-            onAdd = { schedule ->
+            onSave = { schedule ->
                 FocusRepository.addSchedule(schedule)
                 showAddScheduleDialog = false
+            }
+        )
+    }
+
+    editingSchedule?.let { scheduleToEdit ->
+        EnhancedScheduleDialog(
+            initialSchedule = scheduleToEdit,
+            onDismiss = { editingSchedule = null },
+            onSave = { updated ->
+                FocusRepository.updateSchedule(updated)
+                editingSchedule = null
             }
         )
     }
@@ -429,6 +444,7 @@ fun FocusScreen(
 private fun CompactScheduleItemRow(
     schedule: FocusSchedule,
     onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
     onStartNow: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -504,8 +520,20 @@ private fun CompactScheduleItemRow(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Tahrirlash",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
                     FilledTonalButton(
                         onClick = onStartNow,
                         shape = RoundedCornerShape(10.dp)
@@ -953,16 +981,17 @@ private fun SettingSwitch(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EnhancedScheduleDialog(
+    initialSchedule: FocusSchedule? = null,
     onDismiss: () -> Unit,
-    onAdd: (FocusSchedule) -> Unit
+    onSave: (FocusSchedule) -> Unit
 ) {
     val context = LocalContext.current
-    var title by remember { mutableStateOf("Ish va o'qish vaqti") }
-    var startHour by remember { mutableIntStateOf(9) }
-    var startMinute by remember { mutableIntStateOf(0) }
-    var endHour by remember { mutableIntStateOf(12) }
-    var endMinute by remember { mutableIntStateOf(0) }
-    var selectedDays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) } // 1=Mon .. 7=Sun
+    var title by remember(initialSchedule) { mutableStateOf(initialSchedule?.title ?: "Ish va o'qish vaqti") }
+    var startHour by remember(initialSchedule) { mutableIntStateOf(initialSchedule?.startHour ?: 9) }
+    var startMinute by remember(initialSchedule) { mutableIntStateOf(initialSchedule?.startMinute ?: 0) }
+    var endHour by remember(initialSchedule) { mutableIntStateOf(initialSchedule?.endHour ?: 12) }
+    var endMinute by remember(initialSchedule) { mutableIntStateOf(initialSchedule?.endMinute ?: 0) }
+    var selectedDays by remember(initialSchedule) { mutableStateOf(initialSchedule?.daysOfWeek ?: setOf(1, 2, 3, 4, 5)) } // 1=Mon .. 7=Sun
 
     val showAndroidTimePicker = { initialHour: Int, initialMinute: Int, onTimeSelected: (Int, Int) -> Unit ->
         val is24 = DateFormat.is24HourFormat(context)
@@ -1011,7 +1040,11 @@ private fun EnhancedScheduleDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text("Intervalli jadval qo'shish", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (initialSchedule != null) "Jadvalni tahrirlash" else "Intervalli jadval qo'shish",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         text = {
@@ -1189,15 +1222,15 @@ private fun EnhancedScheduleDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onAdd(
+                    onSave(
                         FocusSchedule(
-                            id = UUID.randomUUID().toString(),
+                            id = initialSchedule?.id ?: UUID.randomUUID().toString(),
                             title = title.ifBlank { "FocusLock jadvali" },
                             startHour = startHour,
                             startMinute = startMinute,
                             endHour = endHour,
                             endMinute = endMinute,
-                            enabled = true,
+                            enabled = initialSchedule?.enabled ?: true,
                             daysOfWeek = selectedDays
                         )
                     )
