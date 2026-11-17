@@ -19,6 +19,12 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Scheduled Intervals & Alarms -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- Hardware Torch / Flashlight (No CAMERA permission needed for CameraManager.setTorchMode) -->
     <uses-feature
         android:name="android.hardware.camera.flash"
@@ -110,6 +116,18 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Receiver for Scheduled Alarms, Boot & Package Replacement -->
+        <receiver
+            android:name=".receiver.FocusScheduleReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="com.example.focus.ACTION_CHECK_SCHEDULES" />
+            </intent-filter>
+        </receiver>
 
         <!-- FileProvider for installing downloaded GitHub release APKs -->
         <provider

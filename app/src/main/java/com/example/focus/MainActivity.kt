@@ -59,6 +59,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        FocusRepository.checkAndApplySchedules(this)
+    }
+
     private fun requestNotificationPermissionIfNeeded() {
         if (ContextCompat.checkSelfPermission(
                 this,

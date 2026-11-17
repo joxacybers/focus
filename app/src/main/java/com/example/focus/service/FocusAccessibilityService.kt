@@ -16,7 +16,11 @@ class FocusAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val state = FocusRepository.state.value
-        if (!state.isLocked || event == null) return
+        if (!state.isLocked) {
+            FocusRepository.checkAndApplySchedules(this)
+            return
+        }
+        if (event == null) return
 
         // If Pomodoro is in break phase and break lock is off, allow normal use during break
         if (state.sessionMode == SessionMode.STUDY_POMODORO &&

@@ -71,7 +71,7 @@ class FocusForegroundService : Service() {
             while (isActive) {
                 val state = FocusRepository.state.value
                 if (!state.isLocked) {
-                    checkScheduledSessions()
+                    FocusRepository.checkAndApplySchedules(this@FocusForegroundService)
                     removeTopStatusBarBlocker()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
@@ -85,33 +85,6 @@ class FocusForegroundService : Service() {
 
                 delay(1_000L)
             }
-        }
-    }
-
-    private fun checkScheduledSessions() {
-        val state = FocusRepository.state.value
-        if (state.isLocked) return
-        val cal = Calendar.getInstance()
-        val hour = cal.get(Calendar.HOUR_OF_DAY)
-        val minute = cal.get(Calendar.MINUTE)
-        val dayOfWeek = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1 // 1=Mon..7=Sun
-
-        val matchingSchedule = state.schedules.firstOrNull { schedule ->
-            schedule.enabled &&
-                dayOfWeek in schedule.daysOfWeek &&
-                schedule.startHour == hour &&
-                schedule.startMinute == minute
-        }
-        if (matchingSchedule != null) {
-            val startTotal = matchingSchedule.startHour * 60 + matchingSchedule.startMinute
-            val endTotal = matchingSchedule.endHour * 60 + matchingSchedule.endMinute
-            val duration = if (endTotal > startTotal) endTotal - startTotal else (24 * 60 - startTotal + endTotal)
-            FocusRepository.startFocusSession(
-                context = this,
-                durationMinutes = duration.coerceAtLeast(5),
-                title = matchingSchedule.title,
-                mode = SessionMode.FOCUS
-            )
         }
     }
 

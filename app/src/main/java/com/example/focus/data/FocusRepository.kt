@@ -1,8 +1,10 @@
 package com.example.focus.data
 
 import android.app.ActivityManager
+import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -12,14 +14,18 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.text.TextUtils
+import com.example.focus.receiver.FocusScheduleReceiver
 import com.example.focus.service.FocusAccessibilityService
 import com.example.focus.service.FocusForegroundService
 import com.example.focus.service.FocusNotificationListenerService
+import com.example.focus.ui.lock.LockScreenActivity
+import java.util.Calendar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -105,12 +111,18 @@ object FocusRepository {
         }
     }
 
+    private var applicationContext: Context? = null
+
     fun init(context: Context) {
-        if (::prefs.isInitialized) return
         val appContext = context.applicationContext
-        prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        setupCameraTorch(appContext)
-        loadFromPrefs()
+        applicationContext = appContext
+        if (!::prefs.isInitialized) {
+            prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            setupCameraTorch(appContext)
+            loadFromPrefs()
+        }
+        rescheduleAlarms(appContext)
+        checkAndApplySchedules(appContext)
     }
 
     private fun setupCameraTorch(context: Context) {
@@ -279,24 +291,205 @@ object FocusRepository {
         prefs.edit().putString("schedules_json", arr.toString()).apply()
     }
 
-    fun addSchedule(schedule: FocusSchedule) {
+    data class ActiveScheduleMatch(
+        val schedule: FocusSchedule,
+        val remainingMinutes: Int
+    )
+
+    // Tracks if user purposefully unlocked/dismissed an active schedule occurrence so it doesn't immediately re-lock
+    private var dismissedScheduleId: String? = null
+    private var dismissedScheduleDay: Int = -1
+
+    fun findActiveSchedule(
+        schedules: List<FocusSchedule>,
+        nowCal: Calendar = Calendar.getInstance()
+    ): ActiveScheduleMatch? {
+        val dayOfWeek = ((nowCal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+        val currentMinutes = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+
+        for (schedule in schedules) {
+            if (!schedule.enabled) continue
+            val startMinutes = schedule.startHour * 60 + schedule.startMinute
+            val endMinutes = schedule.endHour * 60 + schedule.endMinute
+
+            var isMatch = false
+            var remaining = 0
+
+            if (endMinutes > startMinutes) {
+                // Same-day interval, e.g. 09:00 to 12:00
+                if (dayOfWeek in schedule.daysOfWeek && currentMinutes in startMinutes until endMinutes) {
+                    isMatch = true
+                    remaining = endMinutes - currentMinutes
+                }
+            } else if (endMinutes < startMinutes) {
+                // Overnight interval, e.g. 22:00 to 06:00
+                if (dayOfWeek in schedule.daysOfWeek && currentMinutes >= startMinutes) {
+                    isMatch = true
+                    remaining = (24 * 60 - currentMinutes) + endMinutes
+                } else {
+                    val prevDayOfWeek = if (dayOfWeek == 1) 7 else dayOfWeek - 1
+                    if (prevDayOfWeek in schedule.daysOfWeek && currentMinutes < endMinutes) {
+                        isMatch = true
+                        remaining = endMinutes - currentMinutes
+                    }
+                }
+            }
+
+            if (isMatch) {
+                // If user dismissed this exact schedule occurrence earlier, skip until it ends
+                if (dismissedScheduleId == schedule.id && dismissedScheduleDay == dayOfWeek) {
+                    continue
+                }
+                return ActiveScheduleMatch(schedule, remaining.coerceAtLeast(1))
+            }
+        }
+        return null
+    }
+
+    fun checkAndApplySchedules(context: Context) {
+        val current = _state.value
+        if (current.isLocked) return
+
+        val match = findActiveSchedule(current.schedules)
+        if (match != null) {
+            startFocusSession(
+                context = context,
+                durationMinutes = match.remainingMinutes,
+                title = match.schedule.title,
+                mode = SessionMode.FOCUS
+            )
+            LockScreenActivity.launch(context)
+        }
+    }
+
+    fun rescheduleAlarms(context: Context) {
+        val schedules = _state.value.schedules.filter { it.enabled && it.daysOfWeek.isNotEmpty() }
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(context, FocusScheduleReceiver::class.java).apply {
+            action = FocusScheduleReceiver.ACTION_CHECK_SCHEDULES
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            FocusScheduleReceiver.REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (schedules.isEmpty()) {
+            alarmManager.cancel(pendingIntent)
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val triggerCandidates = mutableListOf<Long>()
+
+        for (schedule in schedules) {
+            for (offsetDays in 0..7) {
+                val cal = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, offsetDays)
+                }
+                val isoDay = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+                if (isoDay in schedule.daysOfWeek) {
+                    // Schedule start time
+                    val startCal = Calendar.getInstance().apply {
+                        timeInMillis = cal.timeInMillis
+                        set(Calendar.HOUR_OF_DAY, schedule.startHour)
+                        set(Calendar.MINUTE, schedule.startMinute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    if (startCal.timeInMillis > now) {
+                        triggerCandidates.add(startCal.timeInMillis)
+                    }
+
+                    // Schedule end time
+                    val endCal = Calendar.getInstance().apply {
+                        timeInMillis = cal.timeInMillis
+                        set(Calendar.HOUR_OF_DAY, schedule.endHour)
+                        set(Calendar.MINUTE, schedule.endMinute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    if (schedule.endHour < schedule.startHour ||
+                        (schedule.endHour == schedule.startHour && schedule.endMinute < schedule.startMinute)
+                    ) {
+                        endCal.add(Calendar.DAY_OF_YEAR, 1)
+                    }
+                    if (endCal.timeInMillis > now) {
+                        triggerCandidates.add(endCal.timeInMillis)
+                    }
+                }
+            }
+        }
+
+        val nextTrigger = triggerCandidates.minOrNull()
+        if (nextTrigger != null) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            nextTrigger,
+                            pendingIntent
+                        )
+                    } else {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            nextTrigger,
+                            pendingIntent
+                        )
+                    }
+                } else {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        nextTrigger,
+                        pendingIntent
+                    )
+                }
+            } catch (_: SecurityException) {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    nextTrigger,
+                    pendingIntent
+                )
+            }
+        } else {
+            alarmManager.cancel(pendingIntent)
+        }
+    }
+
+    fun addSchedule(schedule: FocusSchedule, context: Context? = null) {
         val updated = _state.value.schedules + schedule
         _state.update { it.copy(schedules = updated) }
         saveSchedules(updated)
+        val ctx = context ?: applicationContext
+        if (ctx != null) {
+            rescheduleAlarms(ctx)
+            checkAndApplySchedules(ctx)
+        }
     }
 
-    fun toggleSchedule(id: String, enabled: Boolean) {
+    fun toggleSchedule(id: String, enabled: Boolean, context: Context? = null) {
         val updated = _state.value.schedules.map {
             if (it.id == id) it.copy(enabled = enabled) else it
         }
         _state.update { it.copy(schedules = updated) }
         saveSchedules(updated)
+        val ctx = context ?: applicationContext
+        if (ctx != null) {
+            rescheduleAlarms(ctx)
+            checkAndApplySchedules(ctx)
+        }
     }
 
-    fun deleteSchedule(id: String) {
+    fun deleteSchedule(id: String, context: Context? = null) {
         val updated = _state.value.schedules.filterNot { it.id == id }
         _state.update { it.copy(schedules = updated) }
         saveSchedules(updated)
+        val ctx = context ?: applicationContext
+        if (ctx != null) {
+            rescheduleAlarms(ctx)
+        }
     }
 
     fun startFocusSession(
@@ -496,7 +689,18 @@ object FocusRepository {
             )
         }
 
+        if (!completed) {
+            val cal = Calendar.getInstance()
+            val dayOfWeek = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+            val currentSchedule = findActiveSchedule(_state.value.schedules, cal)
+            if (currentSchedule != null) {
+                dismissedScheduleId = currentSchedule.schedule.id
+                dismissedScheduleDay = dayOfWeek
+            }
+        }
+
         FocusForegroundService.stop(context)
+        rescheduleAlarms(context)
     }
 
     fun grantTemporaryAllowedPackage(packageName: String?) {
@@ -682,11 +886,20 @@ object FocusRepository {
 
     fun hasUsageStatsPermission(context: Context): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
-        val mode = appOps.unsafeCheckOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            context.packageName
-        )
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
+        }
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
