@@ -1,12 +1,12 @@
 package com.example.focus.ui.lock
 
+import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.telephony.SignalStrength
 import android.telephony.TelephonyCallback
@@ -243,15 +243,30 @@ class LockScreenActivity : ComponentActivity() {
 
     companion object {
         fun launch(context: Context) {
-            val intent = Intent(context, LockScreenActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                )
+            try {
+                val intent = Intent(context, LockScreenActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    )
+                }
+                val bundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    try {
+                        ActivityOptions.makeBasic().apply {
+                            setPendingIntentBackgroundActivityStartMode(
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                            )
+                        }.toBundle()
+                    } catch (_: Throwable) {
+                        null
+                    }
+                } else null
+
+                context.startActivity(intent, bundle)
+            } catch (_: Exception) {
             }
-            context.startActivity(intent)
         }
     }
 }

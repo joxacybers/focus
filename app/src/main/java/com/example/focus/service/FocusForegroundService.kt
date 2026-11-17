@@ -1,5 +1,6 @@
 package com.example.focus.service
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,6 +11,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
@@ -190,11 +192,13 @@ class FocusForegroundService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Focus Faol Sessiya",
-            NotificationManager.IMPORTANCE_LOW
+            "FocusLock Faol Sessiya",
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Focus va Study rejimida qolgan vaqtni ko'rsatadi"
-            setShowBadge(false)
+            description = "FocusLock faol bo'lganda ekran qulfi va qolgan vaqtni ko'rsatadi"
+            setShowBadge(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setBypassDnd(true)
         }
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)
@@ -212,17 +216,35 @@ class FocusForegroundService : Service() {
         val timeFormatted = String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
 
         val lockIntent = Intent(this, LockScreenActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            )
         }
+        val bundle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            try {
+                ActivityOptions.makeBasic().apply {
+                    setPendingIntentBackgroundActivityStartMode(
+                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    )
+                }.toBundle()
+            } catch (_: Throwable) {
+                null
+            }
+        } else null
+
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             lockIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            bundle
         )
 
         val subtitle = when (state.sessionMode) {
-            SessionMode.FOCUS -> "Qolgan vaqt: $timeFormatted • Faqat Telefon, Fonor va Xabarlar"
+            SessionMode.FOCUS -> "Qolgan vaqt: $timeFormatted • Faqat ruxsat etilgan vositalar"
             SessionMode.STUDY_TIMER -> "O'qish vaqti: $timeFormatted • Bildirishnomalar o'chirilgan"
             SessionMode.STUDY_POMODORO -> "Pomodoro ${state.currentRound}/${state.totalRounds} • Qolgan vaqt: $timeFormatted"
         }
@@ -232,11 +254,28 @@ class FocusForegroundService : Service() {
             .setContentTitle(state.sessionTitle)
             .setContentText(subtitle)
             .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
             .build()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        val state = FocusRepository.state.value
+        if (state.isLocked) {
+            val restartIntent = Intent(applicationContext, FocusForegroundService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(restartIntent)
+            } else {
+                applicationContext.startService(restartIntent)
+            }
+            LockScreenActivity.launch(applicationContext)
+        }
     }
 
     override fun onDestroy() {
@@ -248,7 +287,7 @@ class FocusForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val CHANNEL_ID = "focus_active_session_channel"
+        private const val CHANNEL_ID = "focus_lock_session_channel_v2"
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_START = "com.example.focus.action.START_SESSION"
         private const val ACTION_STOP = "com.example.focus.action.STOP_SESSION"

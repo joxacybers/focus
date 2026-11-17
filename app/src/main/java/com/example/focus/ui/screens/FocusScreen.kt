@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
@@ -131,6 +133,8 @@ fun FocusScreen(
     val hasDnd = remember(permissionTrigger) { FocusRepository.hasDndPermission(context) }
     val hasNotifListener = remember(permissionTrigger) { FocusRepository.isNotificationListenerEnabled(context) }
     val hasUsageStats = remember(permissionTrigger) { FocusRepository.hasUsageStatsPermission(context) }
+    val hasBatteryOptimization = remember(permissionTrigger) { FocusRepository.isIgnoringBatteryOptimizations(context) }
+    val hasExactAlarm = remember(permissionTrigger) { FocusRepository.canScheduleExactAlarms(context) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -409,6 +413,8 @@ fun FocusScreen(
             hasDnd = hasDnd,
             hasNotifListener = hasNotifListener,
             hasUsageStats = hasUsageStats,
+            hasBatteryOptimization = hasBatteryOptimization,
+            hasExactAlarm = hasExactAlarm,
             onDismiss = { showSettingsSheet = false }
         )
     }
@@ -540,6 +546,8 @@ private fun FocusSettingsBottomSheet(
     hasDnd: Boolean,
     hasNotifListener: Boolean,
     hasUsageStats: Boolean,
+    hasBatteryOptimization: Boolean,
+    hasExactAlarm: Boolean,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -789,6 +797,22 @@ private fun FocusSettingsBottomSheet(
                         subtitle = "Begona ilova ochilganda darhol blok ekraniga qaytaradi",
                         isGranted = hasUsageStats,
                         onClick = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.BatteryChargingFull,
+                        title = "Batareya tejamkorligini o'chirish (Fon rejimi)",
+                        subtitle = "Ilova yopilganda ham rejalashtirilgan vaqtda aniq ishlashi uchun",
+                        isGranted = hasBatteryOptimization,
+                        onClick = { FocusRepository.requestIgnoreBatteryOptimizations(context) }
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        icon = Icons.Default.Alarm,
+                        title = "Aniq taymerlar va signallar (Exact Alarms)",
+                        subtitle = "Vaqt intervallari kechikmasdan o'z vaqtida qulflanishi uchun",
+                        isGranted = hasExactAlarm,
+                        onClick = { FocusRepository.requestExactAlarmPermission(context) }
                     )
                 }
             }

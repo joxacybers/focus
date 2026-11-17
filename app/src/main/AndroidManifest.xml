@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Hardware Torch / Flashlight (No CAMERA permission needed for CameraManager.setTorchMode) -->
     <uses-feature
@@ -84,6 +85,7 @@
             android:name=".service.FocusForegroundService"
             android:enabled="true"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -125,7 +127,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
                 <action android:name="com.example.focus.ACTION_CHECK_SCHEDULES" />
+                <action android:name="com.example.focus.ACTION_WATCHDOG_CHECK" />
             </intent-filter>
         </receiver>
 

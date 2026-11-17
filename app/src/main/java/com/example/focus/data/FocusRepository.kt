@@ -15,6 +15,7 @@ import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import android.provider.Telephony
@@ -348,16 +349,16 @@ object FocusRepository {
 
     fun checkAndApplySchedules(context: Context) {
         val current = _state.value
-        if (current.isLocked) return
-
         val match = findActiveSchedule(current.schedules)
         if (match != null) {
-            startFocusSession(
-                context = context,
-                durationMinutes = match.remainingMinutes,
-                title = match.schedule.title,
-                mode = SessionMode.FOCUS
-            )
+            if (!current.isLocked) {
+                startFocusSession(
+                    context = context,
+                    durationMinutes = match.remainingMinutes,
+                    title = match.schedule.title,
+                    mode = SessionMode.FOCUS
+                )
+            }
             LockScreenActivity.launch(context)
         }
     }
@@ -422,39 +423,75 @@ object FocusRepository {
             }
         }
 
+        // If an interval schedule is active right now, also register a watchdog trigger in 60s
+        // so that if the user swipes away the app from recents or task killer runs, it re-locks promptly!
+        val activeMatch = findActiveSchedule(schedules)
+        if (activeMatch != null) {
+            triggerCandidates.add(now + 60_000L)
+        }
+
         val nextTrigger = triggerCandidates.minOrNull()
         if (nextTrigger != null) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (alarmManager.canScheduleExactAlarms()) {
-                        alarmManager.setExactAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            nextTrigger,
-                            pendingIntent
-                        )
-                    } else {
-                        alarmManager.setAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            nextTrigger,
-                            pendingIntent
-                        )
-                    }
-                } else {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        nextTrigger,
-                        pendingIntent
-                    )
-                }
-            } catch (_: SecurityException) {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    nextTrigger,
-                    pendingIntent
-                )
-            }
+            setPreciseAlarm(context, alarmManager, nextTrigger, pendingIntent)
         } else {
             alarmManager.cancel(pendingIntent)
+        }
+    }
+
+    private fun setPreciseAlarm(
+        context: Context,
+        alarmManager: AlarmManager,
+        triggerTimeMillis: Long,
+        pendingIntent: PendingIntent
+    ) {
+        val showIntent = Intent(context, LockScreenActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val showPendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            showIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // 1. Primary: setAlarmClock (bypasses Doze mode, exact, highest system priority, doesn't require SCHEDULE_EXACT_ALARM)
+        try {
+            val clockInfo = AlarmManager.AlarmClockInfo(triggerTimeMillis, showPendingIntent)
+            alarmManager.setAlarmClock(clockInfo, pendingIntent)
+            return
+        } catch (_: Exception) {
+        }
+
+        // 2. Secondary: setExactAndAllowWhileIdle
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTimeMillis,
+                        pendingIntent
+                    )
+                    return
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTimeMillis,
+                    pendingIntent
+                )
+                return
+            }
+        } catch (_: Exception) {
+        }
+
+        // 3. Fallback: setAndAllowWhileIdle
+        try {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerTimeMillis,
+                pendingIntent
+            )
+        } catch (_: Exception) {
         }
     }
 
@@ -931,5 +968,49 @@ object FocusRepository {
     fun isInLockTaskMode(context: Context): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         return am?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    fun requestIgnoreBatteryOptimizations(context: Context) {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallback)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return true
+            return am.canScheduleExactAlarms()
+        }
+        return true
+    }
+
+    fun requestExactAlarmPermission(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {
+            }
+        }
     }
 }

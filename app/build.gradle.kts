@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.focus"
         minSdk = 28
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.2.3"
+        versionCode = 22
+        versionName = "1.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
