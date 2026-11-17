@@ -62,14 +62,13 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import android.app.TimePickerDialog
+import android.text.format.DateFormat
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -913,12 +912,8 @@ private fun SettingSwitch(
     }
 }
 
-private enum class ActiveTimeTarget {
-    START, END
-}
-
 /**
- * Enhanced dialog to configure Schedule name, time range via visual picker/presets, and weekday recurrence
+ * Enhanced dialog to configure Schedule name, time range via Android default TimePickerDialog, and weekday recurrence
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -926,6 +921,7 @@ private fun EnhancedScheduleDialog(
     onDismiss: () -> Unit,
     onAdd: (FocusSchedule) -> Unit
 ) {
+    val context = LocalContext.current
     var title by remember { mutableStateOf("Ish va o'qish vaqti") }
     var startHour by remember { mutableIntStateOf(9) }
     var startMinute by remember { mutableIntStateOf(0) }
@@ -933,7 +929,18 @@ private fun EnhancedScheduleDialog(
     var endMinute by remember { mutableIntStateOf(0) }
     var selectedDays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5)) } // 1=Mon .. 7=Sun
 
-    var activeTimePicker by remember { mutableStateOf<ActiveTimeTarget?>(null) }
+    val showAndroidTimePicker = { initialHour: Int, initialMinute: Int, onTimeSelected: (Int, Int) -> Unit ->
+        val is24 = DateFormat.is24HourFormat(context)
+        TimePickerDialog(
+            context,
+            { _, hourOfDay, minute ->
+                onTimeSelected(hourOfDay, minute)
+            },
+            initialHour,
+            initialMinute,
+            is24
+        ).show()
+    }
 
     val dayNames = listOf(
         1 to "Du",
@@ -1006,7 +1013,12 @@ private fun EnhancedScheduleDialog(
                         label = "Boshlanish",
                         hour = startHour,
                         minute = startMinute,
-                        onClick = { activeTimePicker = ActiveTimeTarget.START },
+                        onClick = {
+                            showAndroidTimePicker(startHour, startMinute) { h, m ->
+                                startHour = h
+                                startMinute = m
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     Text("—", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1014,7 +1026,12 @@ private fun EnhancedScheduleDialog(
                         label = "Tugash",
                         hour = endHour,
                         minute = endMinute,
-                        onClick = { activeTimePicker = ActiveTimeTarget.END },
+                        onClick = {
+                            showAndroidTimePicker(endHour, endMinute) { h, m ->
+                                endHour = h
+                                endMinute = m
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1161,26 +1178,6 @@ private fun EnhancedScheduleDialog(
             }
         }
     )
-
-    if (activeTimePicker != null) {
-        val isStart = activeTimePicker == ActiveTimeTarget.START
-        Material3TimePickerDialog(
-            title = if (isStart) "Boshlanish vaqtini tanlang" else "Tugash vaqtini tanlang",
-            initialHour = if (isStart) startHour else endHour,
-            initialMinute = if (isStart) startMinute else endMinute,
-            onConfirm = { h, m ->
-                if (isStart) {
-                    startHour = h
-                    startMinute = m
-                } else {
-                    endHour = h
-                    endMinute = m
-                }
-                activeTimePicker = null
-            },
-            onDismiss = { activeTimePicker = null }
-        )
-    }
 }
 
 /**
@@ -1237,59 +1234,7 @@ private fun TimeDisplayCard(
     }
 }
 
-/**
- * Material 3 Visual Clock Time Picker Dialog
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun Material3TimePickerDialog(
-    title: String,
-    initialHour: Int,
-    initialMinute: Int,
-    onConfirm: (Int, Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val timePickerState = rememberTimePickerState(
-        initialHour = initialHour,
-        initialMinute = initialMinute,
-        is24Hour = true
-    )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                TimePicker(
-                    state = timePickerState,
-                    colors = TimePickerDefaults.colors()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(timePickerState.hour, timePickerState.minute) },
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Tanlash")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Bekor qilish")
-            }
-        }
-    )
-}
 
 private fun formatScheduleDays(days: Set<Int>): String {
     return when {

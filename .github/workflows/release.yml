@@ -45,7 +45,11 @@ jobs:
             TAG_NAME="${GITHUB_REF#refs/tags/}"
             VERSION_NAME="${TAG_NAME#v}"
           else
-            VERSION_NAME="1.0.${GITHUB_RUN_NUMBER}"
+            BASE_VERSION=$(grep 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+            if [[ -z "$BASE_VERSION" ]]; then
+              BASE_VERSION="1.2.0"
+            fi
+            VERSION_NAME="${BASE_VERSION}"
             TAG_NAME="v${VERSION_NAME}"
           fi
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
