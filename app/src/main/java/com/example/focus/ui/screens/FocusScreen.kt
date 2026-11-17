@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Layers
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +57,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -114,6 +117,7 @@ fun FocusScreen(
 ) {
     val context = LocalContext.current
     var showAddScheduleDialog by remember { mutableStateOf(false) }
+    var showQuickLockSheet by remember { mutableStateOf(false) }
     var editingSchedule by remember { mutableStateOf<FocusSchedule?>(null) }
     var showSettingsSheet by remember { mutableStateOf(false) }
 
@@ -176,17 +180,37 @@ fun FocusScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddScheduleDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Yangi vaqt oralig'i qo'shish",
-                    modifier = Modifier.size(26.dp)
-                )
+                // Tezkor bloklash (Chaqmoq ikonkasi)
+                SmallFloatingActionButton(
+                    onClick = { showQuickLockSheet = true },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FlashOn,
+                        contentDescription = "Tezkor bloklash",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Intervalli jadval qo'shish (+)
+                FloatingActionButton(
+                    onClick = { showAddScheduleDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Yangi vaqt oralig'i qo'shish",
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -417,6 +441,21 @@ fun FocusScreen(
             onSave = { updated ->
                 FocusRepository.updateSchedule(updated)
                 editingSchedule = null
+            }
+        )
+    }
+
+    if (showQuickLockSheet) {
+        QuickLockBottomSheet(
+            onDismiss = { showQuickLockSheet = false },
+            onStartLock = { minutes ->
+                showQuickLockSheet = false
+                FocusRepository.startFocusSession(
+                    context = context,
+                    durationMinutes = minutes,
+                    title = "Tezkor bloklash",
+                    mode = SessionMode.FOCUS
+                )
             }
         )
     }
@@ -1321,6 +1360,149 @@ private fun formatScheduleDays(days: Set<Int>): String {
                 7 to "Yak"
             )
             days.sorted().joinToString(", ") { names[it] ?: "" }
+        }
+    }
+}
+
+
+/**
+ * Bottom sheet for Quick Lock (Tezkor bloklash) with duration presets and start button
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickLockBottomSheet(
+    onDismiss: () -> Unit,
+    onStartLock: (Int) -> Unit
+) {
+    var selectedMinutes by remember { mutableIntStateOf(25) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val presets = listOf(5, 10, 15, 20, 25, 30, 45, 60, 90, 120, 180)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.FlashOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Column {
+                    Text(
+                        text = "Tezkor bloklash",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Bloklash davomiyligini tanlang",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Big selected duration display
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "$selectedMinutes daqiqa",
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    val hours = selectedMinutes / 60
+                    val mins = selectedMinutes % 60
+                    if (hours > 0) {
+                        Text(
+                            text = if (mins > 0) "$hours soat $mins daqiqa" else "$hours soat",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // Minutes chips grid / flow
+            Text(
+                text = "Tavsiya etilgan daqiqalar:",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { mins ->
+                    val isSelected = mins == selectedMinutes
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedMinutes = mins },
+                        label = {
+                            Text(
+                                text = if (mins >= 60 && mins % 60 == 0) "${mins / 60} soat" else "$mins daq",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Start Button
+            Button(
+                onClick = { onStartLock(selectedMinutes) },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Bloklashni boshlash ($selectedMinutes daq)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
