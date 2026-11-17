@@ -148,7 +148,7 @@ fun FocusScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "Focus",
+                            text = "FocusLock",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.ExtraBold
                         )
@@ -1157,7 +1157,7 @@ private fun EnhancedScheduleDialog(
                     onAdd(
                         FocusSchedule(
                             id = UUID.randomUUID().toString(),
-                            title = title.ifBlank { "Focus jadvali" },
+                            title = title.ifBlank { "FocusLock jadvali" },
                             startHour = startHour,
                             startMinute = startMinute,
                             endHour = endHour,

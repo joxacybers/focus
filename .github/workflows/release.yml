@@ -78,12 +78,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
-          name: "Focus ${{ steps.version.outputs.tag_name }}"
+          name: "FocusLock ${{ steps.version.outputs.tag_name }}"
           body: |
-            ## Focus ${{ steps.version.outputs.tag_name }} — Avtomatik Yangilanish (Auto Release)
+            ## FocusLock ${{ steps.version.outputs.tag_name }} — Avtomatik Yangilanish (Auto Release)
             
             - **Yuklab olish:** Quyidagi `Focus-${{ steps.version.outputs.tag_name }}.apk` faylini yuklab olib o'rnating.
-            - **Ilova ichidan yangilash:** Focus ilovasining **Sozlamalar** bo'limidagi **"Yangilanishni tekshirish"** tugmasi orqali to'g'ridan-to'g'ri yangilashingiz mumkin (`joxacybers/focus`).
+            - **Ilova ichidan yangilash:** FocusLock ilovasining **Sozlamalar** bo'limidagi **"Yangilanishni tekshirish"** tugmasi orqali to'g'ridan-to'g'ri yangilashingiz mumkin (`joxacybers/focus`).
             - **Commit:** `${{ github.sha }}`
           draft: false
           prerelease: false

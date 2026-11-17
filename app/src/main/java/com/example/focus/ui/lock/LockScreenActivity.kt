@@ -428,7 +428,7 @@ private fun FullLockScreenContent(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "FOCUS REJIMI • ${state.sessionTitle}",
+                            text = "FOCUSLOCK REJIMI • ${state.sessionTitle}",
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.White,
                             fontWeight = FontWeight.SemiBold
@@ -669,7 +669,7 @@ private fun CustomLockStatusBar(
                     color = Color.White
                 )
                 Text(
-                    text = "• Focus Lock",
+                    text = "• FocusLock",
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.65f)
                 )

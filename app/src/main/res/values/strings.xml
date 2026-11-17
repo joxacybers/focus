@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Focus</string>
-    <string name="accessibility_service_description">Focus va Study rejimlarida ruxsat etilmagan ilovalarni hamda boshqaruv panelini (Control Panel) bloklash uchun xizmat qiladi.</string>
+    <string name="app_name">FocusLock</string>
+    <string name="accessibility_service_description">FocusLock rejimida ruxsat etilmagan ilovalarni hamda boshqaruv panelini (Control Panel) bloklash uchun xizmat qiladi.</string>
 </resources>
