@@ -30,7 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoNotDisturbOn
-import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Layers
@@ -184,17 +184,17 @@ fun FocusScreen(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Tezkor bloklash (Chaqmoq ikonkasi)
-                SmallFloatingActionButton(
+                // Tezkor bloklash (Chaqmoq ikonkasi) - "+" bilan bir xil o'lchamda
+                FloatingActionButton(
                     onClick = { showQuickLockSheet = true },
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     shape = CircleShape
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FlashOn,
+                        imageVector = Icons.Default.Bolt,
                         contentDescription = "Tezkor bloklash",
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -1402,7 +1402,7 @@ private fun QuickLockBottomSheet(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.FlashOn,
+                            imageVector = Icons.Default.Bolt,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.size(20.dp)

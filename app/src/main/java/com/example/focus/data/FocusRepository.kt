@@ -86,7 +86,7 @@ data class FocusState(
     val strictMode: Boolean = true,
     val autoDndAndMute: Boolean = true,
     val blockControlPanel: Boolean = true,
-    val keepScreenAwake: Boolean = true,
+    val keepScreenAwake: Boolean = false,
     val useScreenPinning: Boolean = false,
     val lockDuringPomodoroBreak: Boolean = true,
     val darkThemeMode: Int = 0, // 0 = System, 1 = Light, 2 = Dark
@@ -176,7 +176,12 @@ object FocusRepository {
         val strictMode = prefs.getBoolean("strictMode", true)
         val autoDndAndMute = prefs.getBoolean("autoDndAndMute", true)
         val blockControlPanel = prefs.getBoolean("blockControlPanel", true)
-        val keepScreenAwake = prefs.getBoolean("keepScreenAwake", true)
+        val keepScreenAwake = if (!prefs.contains("keepScreenAwake_v2")) {
+            prefs.edit().putBoolean("keepScreenAwake", false).putBoolean("keepScreenAwake_v2", true).apply()
+            false
+        } else {
+            prefs.getBoolean("keepScreenAwake", false)
+        }
         val useScreenPinning = prefs.getBoolean("useScreenPinning", false)
         val lockDuringBreak = prefs.getBoolean("lockDuringPomodoroBreak", true)
         val darkThemeMode = prefs.getInt("darkThemeMode", 0)

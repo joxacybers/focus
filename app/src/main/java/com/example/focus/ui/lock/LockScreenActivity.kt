@@ -122,7 +122,7 @@ class LockScreenActivity : ComponentActivity() {
         FocusRepository.init(this)
 
         setShowWhenLocked(true)
-        setTurnScreenOn(true)
+        setTurnScreenOn(FocusRepository.state.value.keepScreenAwake)
 
         // Cover the entire screen including status bar, navigation bar, and camera cutout
         enableEdgeToEdge()
@@ -132,6 +132,8 @@ class LockScreenActivity : ComponentActivity() {
         }
         if (FocusRepository.state.value.keepScreenAwake) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
 
         hideSystemBarsImmersive()
@@ -148,6 +150,14 @@ class LockScreenActivity : ComponentActivity() {
 
         setContent {
             val state by FocusRepository.state.collectAsState()
+
+            LaunchedEffect(state.keepScreenAwake) {
+                if (state.keepScreenAwake) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
 
             // Automatically close LockScreenActivity when session finishes
             LaunchedEffect(state.isLocked) {
@@ -488,8 +498,7 @@ private fun FullLockScreenContent(
 }
 
 /**
- * Google Material 3 Expressive Wavy Progress Bar (as shown in the user reference image)
- * Features a sinusoidal wave progress indicator with a subtle light track and terminal dot.
+ * Google Material 3 Expressive Linear Progress Bar (Straight version with rounded caps and end dot)
  */
 @Composable
 private fun GoogleExpressiveLinearProgress(
@@ -497,66 +506,54 @@ private fun GoogleExpressiveLinearProgress(
     modifier: Modifier = Modifier
 ) {
     val clampedProgress = progress.coerceIn(0f, 1f)
-    val waveColor = MaterialTheme.colorScheme.primary
+    val activeColor = MaterialTheme.colorScheme.primary
     val trackColor = Color.White.copy(alpha = 0.22f)
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(20.dp)
     ) {
         val totalWidth = size.width
         val centerY = size.height / 2f
-        val strokeWidthPx = 4.dp.toPx()
+        val strokeWidthPx = 6.dp.toPx()
+        val trackWidthPx = 4.dp.toPx()
         val dotRadiusPx = 3.dp.toPx()
-
-        // 1. Inactive Track (Straight subtle line from wave tip to right edge minus end dot)
-        val activeWidth = totalWidth * clampedProgress
         val endDotPadding = 4.dp.toPx()
+        val gapPx = 6.dp.toPx()
+
+        val activeWidth = (totalWidth * clampedProgress).coerceIn(0f, totalWidth)
         val trackEndX = (totalWidth - endDotPadding - dotRadiusPx).coerceAtLeast(0f)
 
-        if (activeWidth < trackEndX) {
+        // 1. Inactive Track (Straight subtle line from activeWidth + gap to trackEndX)
+        val trackStartX = if (activeWidth > 0f) (activeWidth + gapPx) else 0f
+        if (trackStartX < trackEndX) {
             drawLine(
                 color = trackColor,
-                start = Offset(activeWidth, centerY),
+                start = Offset(trackStartX, centerY),
                 end = Offset(trackEndX, centerY),
-                strokeWidth = strokeWidthPx * 0.75f,
+                strokeWidth = trackWidthPx,
                 cap = StrokeCap.Round
             )
         }
 
-        // Terminal end dot as shown in the M3 Expressive design
+        // 2. Terminal end dot (as in M3 Expressive linear indicator)
         drawCircle(
             color = trackColor,
             radius = dotRadiusPx,
             center = Offset(totalWidth - endDotPadding, centerY)
         )
 
-        // 2. Active Wave Indicator (Sinusoidal wavy line from 0 to activeWidth)
-        if (activeWidth > 2f) {
-            val wavePath = Path()
-            val wavelength = 24.dp.toPx() // wavelength of one wave cycle
-            val amplitude = 6.dp.toPx()   // peak-to-trough amplitude
-
-            wavePath.moveTo(0f, centerY)
-            var currentX = 0f
-            val step = 2.dp.toPx()
-            while (currentX <= activeWidth) {
-                val y = centerY + amplitude * kotlin.math.sin((currentX / wavelength) * (2f * Math.PI.toFloat()))
-                wavePath.lineTo(currentX, y)
-                currentX += step
-            }
-            // Ensure the path extends exactly to activeWidth
-            val finalY = centerY + amplitude * kotlin.math.sin((activeWidth / wavelength) * (2f * Math.PI.toFloat()))
-            wavePath.lineTo(activeWidth, finalY)
-
-            drawPath(
-                path = wavePath,
-                color = waveColor,
-                style = Stroke(
-                    width = strokeWidthPx,
-                    cap = StrokeCap.Round
-                )
+        // 3. Active Indicator (Straight horizontal line with rounded caps)
+        if (activeWidth > 0f) {
+            val minCapWidth = strokeWidthPx
+            val drawEndX = activeWidth.coerceAtLeast(minCapWidth)
+            drawLine(
+                color = activeColor,
+                start = Offset(strokeWidthPx / 2f, centerY),
+                end = Offset(drawEndX - strokeWidthPx / 2f, centerY),
+                strokeWidth = strokeWidthPx,
+                cap = StrokeCap.Round
             )
         }
     }
